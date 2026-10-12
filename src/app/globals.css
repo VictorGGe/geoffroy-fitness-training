@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-ink-950 text-ink-100 font-sans antialiased;
+    background-image:
+      radial-gradient(1200px 600px at 100% -10%, rgba(47, 85, 228, 0.10), transparent 60%),
+      radial-gradient(800px 500px at -10% 110%, rgba(47, 85, 228, 0.06), transparent 60%);
+    background-attachment: fixed;
+  }
+  ::selection {
+    @apply bg-royal-600/50 text-white;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.8);
+    cursor: pointer;
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-ink-700/70 bg-ink-850/80 shadow-card backdrop-blur-sm;
+  }
+  .input {
+    @apply w-full rounded-xl border border-ink-700 bg-ink-900 px-3.5 py-2.5 text-[15px] text-ink-100 placeholder:text-ink-500
+      outline-none transition focus:border-royal-500 focus:ring-2 focus:ring-royal-500/25 disabled:opacity-50;
+  }
+  .input-sm {
+    @apply w-full rounded-lg border border-ink-700 bg-ink-900 px-2 py-1.5 text-sm text-ink-100 placeholder:text-ink-500
+      outline-none transition focus:border-royal-500 focus:ring-2 focus:ring-royal-500/25;
+  }
+  .label {
+    @apply mb-1.5 block text-[13px] font-medium text-ink-300;
+  }
+  .h-display {
+    @apply font-display font-semibold uppercase tracking-wide;
+  }
+  .table-base {
+    @apply w-full text-left text-sm;
+  }
+  .table-base th {
+    @apply whitespace-nowrap border-b border-ink-700 px-3 py-2.5 text-xs font-medium uppercase tracking-wider text-ink-400;
+  }
+  .table-base td {
+    @apply border-b border-ink-750 px-3 py-2.5 align-top;
+  }
+  .table-base tr:last-child td {
+    @apply border-b-0;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #2e3545 transparent;
+  }
+}
+
+.recharts-cartesian-grid line {
+  stroke: #222835;
+}
+.recharts-text {
+  fill: #9aa2b2;
+  font-size: 12px;
+}
+.recharts-tooltip-wrapper {
+  outline: none;
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
