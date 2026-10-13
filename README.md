@@ -358,3 +358,25 @@ npm run typecheck   # vérification TypeScript
 npm run backup      # sauvegarde des données
 npm run restore -- <fichier.dump>
 ```
+
+---
+
+## 14. Espace client (accès personnel de chaque client)
+
+Chaque client peut recevoir un accès à **son** espace, sur la même adresse que l'application :
+- il voit **uniquement** ses programmes et ses séances (jamais les autres clients, ni vos notes privées, contraintes, pesées ou bilans) ;
+- il peut ajuster son programme (séries, répétitions, charges, ordre, exercices de votre bibliothèque) ;
+- il peut noter ses séances (avec le chrono de repos) et suivre sa progression ;
+- il peut exporter son programme en PDF ;
+- vous gardez un accès complet en parallèle et voyez toutes ses modifications.
+
+### Activation (une seule fois)
+1. **Supabase › SQL Editor** : exécutez `supabase/migrations/20261013000003_client_accounts.sql`.
+2. **Supabase › Project Settings › API Keys** : copiez la clé **secrète** (`sb_secret_…` ou `service_role`).
+3. **Vercel › Settings › Environment Variables** : ajoutez `SUPABASE_SERVICE_ROLE_KEY` = cette clé (**sans** `NEXT_PUBLIC_` : elle reste côté serveur), puis **Redeploy**.
+4. Vérifiez sur `/diagnostic` : la ligne « Accès clients » doit être verte.
+
+### Utilisation
+Fiche client › onglet **Informations** › carte **Accès client** : saisissez l'e-mail, cliquez sur **Générer** (ou choisissez un mot de passe), puis **Créer l'accès**. Les identifiants s'affichent une fois, avec un bouton **Envoyer par e-mail** (message prérempli) et **Copier le message**. Depuis la même carte : changer le mot de passe ou retirer l'accès (les données sont conservées).
+
+> Les « notes personnelles » des fiches d'exercices sont visibles par les clients ayant un accès (elles servent aussi d'explications).

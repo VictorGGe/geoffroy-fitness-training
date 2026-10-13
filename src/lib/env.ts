@@ -23,3 +23,11 @@ export const SUPABASE_KEY = clean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, "NE
 
 export const SUPABASE_CONFIG_OK =
   /^https?:\/\/[^\s/]+(:\d+)?$/.test(SUPABASE_URL) && SUPABASE_KEY.length > 20;
+
+/** Clé secrète Supabase (serveur uniquement) : sert à créer les comptes clients. */
+export function serviceRoleKey(): string {
+  return (
+    clean(process.env.SUPABASE_SERVICE_ROLE_KEY, "SUPABASE_SERVICE_ROLE_KEY") ||
+    clean(process.env.SUPABASE_SECRET_KEY, "SUPABASE_SECRET_KEY")
+  );
+}

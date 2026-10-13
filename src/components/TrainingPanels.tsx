@@ -6,6 +6,7 @@ import { ChevronDown, ClipboardPlus, Dumbbell, Pencil, Trophy } from "lucide-rea
 import { Badge, Card, EmptyState, ErrorBlock, Input, LinkButton, LoadingBlock, Select, StatCard, cn } from "./ui";
 import { TimeChart } from "./charts";
 import { getSupabase } from "@/lib/supabase/client";
+import { usePaths } from "@/lib/mode";
 import { unwrap, useAsync } from "@/lib/hooks";
 import { aggregateExercise, estimate1RM, type ExerciseSessionPoint } from "@/lib/calc";
 import { fmtDate, fmtDateLong, fmtNum, num, SET_TYPE_LABELS } from "@/lib/format";
@@ -16,6 +17,7 @@ import type { WorkoutLog, WorkoutSet } from "@/lib/types";
 /* ------------------------------------------------------------------ */
 
 export function SessionHistory({ clientId }: { clientId: string }) {
+  const paths = usePaths();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [open, setOpen] = useState<string | null>(null);
@@ -52,7 +54,7 @@ export function SessionHistory({ clientId }: { clientId: string }) {
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="mt-1" />
           </label>
         </div>
-        <LinkButton href={`/sessions/new?client=${clientId}`} className="sm:ml-auto">
+        <LinkButton href={paths.sessionNew({ client: clientId })} className="sm:ml-auto">
           <ClipboardPlus className="h-4 w-4" /> Saisir une séance
         </LinkButton>
       </div>
@@ -107,7 +109,7 @@ export function SessionHistory({ clientId }: { clientId: string }) {
                       <p className="mt-4 whitespace-pre-line rounded-xl bg-ink-800 px-3 py-2.5 text-sm text-ink-200">{l.coach_comments}</p>
                     )}
                     <div className="mt-4 flex justify-end">
-                      <LinkButton href={`/sessions/${l.id}`} variant="secondary" size="sm">
+                      <LinkButton href={paths.session(l.id)} variant="secondary" size="sm">
                         <Pencil className="h-3.5 w-3.5" /> Modifier
                       </LinkButton>
                     </div>
@@ -207,6 +209,7 @@ const METRICS: { key: Metric; label: string; unit: string }[] = [
 ];
 
 export function ProgressionPanel({ clientId }: { clientId: string }) {
+  const paths = usePaths();
   const { data, loading, error, reload } = useAsync(async () => {
     return unwrap(
       await getSupabase()
@@ -245,7 +248,7 @@ export function ProgressionPanel({ clientId }: { clientId: string }) {
           title="Pas encore de données de progression"
           text="La progression apparaît dès que des séances réalisées sont enregistrées."
           action={
-            <LinkButton href={`/sessions/new?client=${clientId}`}>
+            <LinkButton href={paths.sessionNew({ client: clientId })}>
               <ClipboardPlus className="h-4 w-4" /> Saisir une séance
             </LinkButton>
           }
@@ -376,7 +379,7 @@ export function ProgressionPanel({ clientId }: { clientId: string }) {
               {[...points].reverse().map((p) => (
                 <tr key={p.logId}>
                   <td className="whitespace-nowrap">
-                    <Link href={`/sessions/${p.logId}`} className="text-royal-300 hover:text-royal-200">
+                    <Link href={paths.session(p.logId)} className="text-royal-300 hover:text-royal-200">
                       {fmtDate(p.date)}
                     </Link>
                   </td>

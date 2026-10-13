@@ -9,7 +9,8 @@ import { Badge, Button, Card, ConfirmDialog, Field, Input, LoadingBlock, PageHea
 import { ExercisePicker } from "./ExercisePicker";
 import { useToast } from "./toast";
 import { getSupabase } from "@/lib/supabase/client";
-import { fetchProgramFull } from "@/lib/data";
+import { fetchProgramFull, getMyClientProfile } from "@/lib/data";
+import { usePaths } from "@/lib/mode";
 import {
   emptyToNull,
   errorMessage,
@@ -72,6 +73,7 @@ export function WorkoutEditor({
   const router = useRouter();
   const toast = useToast();
   const sb = getSupabase();
+  const paths = usePaths();
   const editing = !!logId;
 
   const [loading, setLoading] = useState(true);
@@ -113,8 +115,15 @@ export function WorkoutEditor({
   // Chargement initial
   useEffect(() => {
     (async () => {
-      const { data: cl } = await sb.from("clients").select("id, first_name, last_name").eq("archived", false).order("last_name");
-      setClients(cl ?? []);
+      if (paths.isClient) {
+        // Espace client : uniquement lui-même
+        const me = await getMyClientProfile();
+        setClients(me ? [me] : []);
+        if (me && !logId) setClientId(me.id);
+      } else {
+        const { data: cl } = await sb.from("clients").select("id, first_name, last_name").eq("archived", false).order("last_name");
+        setClients(cl ?? []);
+      }
       if (logId) {
         const { data, error } = await sb.from("workout_logs").select("*, workout_sets(*)").eq("id", logId).single();
         if (error || !data) {
@@ -357,7 +366,7 @@ export function WorkoutEditor({
         }
       }
       toast.success(editing ? "Séance mise à jour." : "Séance enregistrée.");
-      router.push(`/clients/${clientId}?tab=seances`);
+      router.push(paths.clientSessions(clientId));
       router.refresh();
     } catch (e) {
       setError(errorMessage(e));
@@ -371,7 +380,7 @@ export function WorkoutEditor({
     const { error } = await sb.from("workout_logs").delete().eq("id", logId);
     if (error) return toast.error(errorMessage(error));
     toast.success("Séance supprimée.");
-    router.push(`/clients/${clientId}?tab=seances`);
+    router.push(paths.clientSessions(clientId));
   }
 
   if (loading) return <LoadingBlock />;
@@ -383,7 +392,7 @@ export function WorkoutEditor({
       <PageHeader
         back={
           <Link
-            href={clientId ? `/clients/${clientId}?tab=seances` : "/clients"}
+            href={paths.isClient ? "/espace/seances" : clientId ? `/clients/${clientId}?tab=seances` : "/clients"}
             className="inline-flex items-center gap-1.5 text-sm text-ink-400 hover:text-ink-100"
           >
             <ArrowLeft className="h-4 w-4" /> {client ? fullName(client) : "Retour"}
@@ -410,7 +419,7 @@ export function WorkoutEditor({
                 setProgramId("");
                 setSessionId("");
               }}
-              disabled={editing}
+              disabled={editing || paths.isClient}
             >
               <option value="">— Choisir —</option>
               {clients.map((c) => (

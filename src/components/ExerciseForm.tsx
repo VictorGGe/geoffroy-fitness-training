@@ -136,7 +136,7 @@ export function ExerciseForm({
         <Field label="Lien vidéo de démonstration" className="sm:col-span-3">
           <Input type="url" value={form.video_url} onChange={set("video_url")} placeholder="https://…" />
         </Field>
-        <Field label="Notes personnelles" className="sm:col-span-3">
+        <Field label="Notes personnelles" className="sm:col-span-3" hint="Attention : visibles aussi par les clients qui ont un accès à leur espace.">
           <Textarea value={form.notes} onChange={set("notes")} rows={2} maxLength={4000} />
         </Field>
         <datalist id="muscles">

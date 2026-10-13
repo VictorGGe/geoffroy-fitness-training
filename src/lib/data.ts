@@ -123,6 +123,11 @@ export async function fetchProgramFull(id: string): Promise<{ program: Program; 
       .order("position"),
   ) as ProgramSession[];
   sessions.forEach((s) => s.program_exercises?.sort((a, b) => a.position - b.position));
+  // Compte client : la fiche complète n'est pas lisible, on récupère seulement le nom.
+  if (!program.clients && program.client_id) {
+    const profile = await getMyClientProfile();
+    if (profile?.id === program.client_id) program.clients = profile;
+  }
   return { program, sessions };
 }
 
@@ -175,4 +180,12 @@ async function copySessionInto(s: ProgramSession, programId: string, position: n
 /** Copie une séance dans le même programme (ou un autre). */
 export async function copySession(session: ProgramSession, targetProgramId: string, position: number) {
   await copySessionInto(session, targetProgramId, position, `${session.name} (copie)`);
+}
+
+/** Prénom et nom du client connecté (espace client). */
+export async function getMyClientProfile(): Promise<{ id: string; first_name: string; last_name: string } | null> {
+  const { data, error } = await getSupabase().rpc("my_client_profile");
+  if (error || !data) return null;
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ?? null;
 }

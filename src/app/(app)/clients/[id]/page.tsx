@@ -33,6 +33,7 @@ import {
   Tabs,
 } from "@/components/ui";
 import { ClientForm } from "@/components/ClientForm";
+import { ClientAccessCard } from "@/components/ClientAccessCard";
 import { ProgramForm } from "@/components/ProgramForm";
 import { ProgressionPanel, SessionHistory } from "@/components/TrainingPanels";
 import { WeightTracker } from "@/components/WeightTracker";
@@ -89,6 +90,20 @@ function ClientDetail() {
 
   async function deleteClient() {
     setDeleting(true);
+    // Supprime d'abord le compte de connexion du client, s'il en a un
+    const { data: account } = await getSupabase().from("client_accounts").select("user_id").eq("client_id", id).maybeSingle();
+    if (account) {
+      const res = await fetch("/api/client-account", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: id }),
+      });
+      if (!res.ok) {
+        setDeleting(false);
+        const j = await res.json().catch(() => ({}));
+        return toast.error(j.error || "Impossible de retirer l'accès du client.");
+      }
+    }
     const { error } = await getSupabase().from("clients").delete().eq("id", id);
     setDeleting(false);
     if (error) return toast.error(errorMessage(error));
@@ -208,6 +223,8 @@ function InfoTab({ client, onArchive, onDelete, onEdit }: { client: Client; onAr
           </p>
         </Card>
       </div>
+      <div className="space-y-5">
+      <ClientAccessCard client={client} />
       <Card title="Gestion de la fiche">
         <div className="grid gap-2">
           <Button variant="secondary" className="justify-start" onClick={onArchive}>
@@ -222,6 +239,7 @@ function InfoTab({ client, onArchive, onDelete, onEdit }: { client: Client; onAr
           </p>
         </div>
       </Card>
+      </div>
     </div>
   );
 }

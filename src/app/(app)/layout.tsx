@@ -11,6 +11,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  if (user.app_metadata?.role === "client") redirect("/espace");
 
   return <AppShell email={user.email ?? ""}>{children}</AppShell>;
 }

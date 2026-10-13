@@ -1,5 +1,5 @@
 import { AuthShell } from "@/components/AuthShell";
-import { SUPABASE_KEY, SUPABASE_URL } from "@/lib/env";
+import { SUPABASE_KEY, SUPABASE_URL, serviceRoleKey } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
@@ -70,13 +70,42 @@ async function runChecks(): Promise<Check[]> {
     } catch (e) {
       checks.push({ label: "Connexion au serveur Supabase", ok: false, detail: `Injoignable : ${(e as Error).message}` });
     }
+
+    // Accès clients (facultatif)
+    const secret = serviceRoleKey();
+    if (!secret) {
+      checks.push({
+        label: "Accès clients (SUPABASE_SERVICE_ROLE_KEY)",
+        ok: false,
+        detail: "Non configuré — facultatif : nécessaire uniquement pour créer des accès à vos clients.",
+      });
+    } else {
+      try {
+        const res = await fetch(`${url}/rest/v1/client_accounts?select=user_id&limit=1`, {
+          headers: { apikey: secret, Authorization: `Bearer ${secret}` },
+          cache: "no-store",
+        });
+        const txt = await res.text();
+        checks.push({
+          label: "Accès clients (SUPABASE_SERVICE_ROLE_KEY)",
+          ok: res.ok,
+          detail: res.ok
+            ? "Clé secrète valide et table des accès présente."
+            : /client_accounts|does not exist|schema cache/i.test(txt)
+              ? "Clé valide, mais exécutez le fichier SQL 20261013000003_client_accounts.sql dans Supabase."
+              : `Clé refusée (code ${res.status}) : vérifiez que c'est bien la clé secrète / service_role.`,
+        });
+      } catch (e) {
+        checks.push({ label: "Accès clients (SUPABASE_SERVICE_ROLE_KEY)", ok: false, detail: `Vérification impossible : ${(e as Error).message}` });
+      }
+    }
   }
   return checks;
 }
 
 export default async function DiagnosticPage() {
   const checks = await runChecks();
-  const allOk = checks.every((c) => c.ok);
+  const allOk = checks.every((c) => c.ok || c.label.startsWith("Accès clients"));
   return (
     <AuthShell title="Diagnostic" subtitle="Vérification de la configuration du site (aucune donnée client n'est affichée).">
       <ul className="space-y-3">

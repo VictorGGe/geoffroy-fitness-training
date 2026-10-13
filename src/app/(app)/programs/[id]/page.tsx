@@ -61,6 +61,7 @@ import { ExercisePicker } from "@/components/ExercisePicker";
 import { getSupabase } from "@/lib/supabase/client";
 import { copySession, duplicateProgram, fetchProgramFull } from "@/lib/data";
 import { useAsync } from "@/lib/hooks";
+import { usePaths } from "@/lib/mode";
 import {
   emptyToNull,
   errorMessage,
@@ -81,6 +82,7 @@ export default function ProgramEditorPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const toast = useToast();
+  const paths = usePaths();
   const { data, loading, error, reload, setData } = useAsync(() => fetchProgramFull(id), [id]);
 
   const [infoOpen, setInfoOpen] = useState(false);
@@ -192,11 +194,11 @@ export default function ProgramEditorPage() {
       <PageHeader
         back={
           <Link
-            href={program.client_id ? `/clients/${program.client_id}?tab=programmes` : "/programs"}
+            href={paths.clientPrograms(program.client_id)}
             className="inline-flex items-center gap-1.5 text-sm text-ink-400 hover:text-ink-100"
           >
             <ArrowLeft className="h-4 w-4" />
-            {program.clients ? fullName(program.clients) : "Programmes"}
+            {paths.isClient ? "Mes programmes" : program.clients ? fullName(program.clients) : "Programmes"}
           </Link>
         }
         title={program.name}
@@ -217,7 +219,7 @@ export default function ProgramEditorPage() {
         actions={
           <>
             {program.client_id && (
-              <LinkButton href={`/sessions/new?client=${program.client_id}&program=${program.id}`} variant="primary">
+              <LinkButton href={paths.sessionNew({ client: program.client_id, program: program.id })} variant="primary">
                 <ClipboardPlus className="h-4 w-4" /> Saisir une séance
               </LinkButton>
             )}
@@ -280,13 +282,15 @@ export default function ProgramEditorPage() {
           <Card
             title="Programme"
             actions={
-              <Button size="sm" variant="ghost" onClick={() => setInfoOpen(true)}>
-                <Pencil className="h-3.5 w-3.5" /> Modifier
-              </Button>
+              paths.isClient ? undefined : (
+                <Button size="sm" variant="ghost" onClick={() => setInfoOpen(true)}>
+                  <Pencil className="h-3.5 w-3.5" /> Modifier
+                </Button>
+              )
             }
           >
             <dl className="space-y-3 text-sm">
-              <div className="flex justify-between gap-3">
+              {!paths.isClient && <div className="flex justify-between gap-3">
                 <dt className="text-ink-400">Client</dt>
                 <dd className="text-right">
                   {program.clients ? (
@@ -297,7 +301,7 @@ export default function ProgramEditorPage() {
                     <span className="text-ink-500">Aucun (modèle)</span>
                   )}
                 </dd>
-              </div>
+              </div>}
               <div className="flex justify-between gap-3">
                 <dt className="text-ink-400">Contenu</dt>
                 <dd>
@@ -318,7 +322,7 @@ export default function ProgramEditorPage() {
               )}
             </dl>
           </Card>
-          <Card title="Actions">
+          {!paths.isClient && <Card title="Actions">
             <div className="grid gap-2">
               <Button variant="secondary" className="justify-start" onClick={() => setDupOpen(true)}>
                 <UserPlus className="h-4 w-4" /> Dupliquer / réassigner
@@ -331,7 +335,7 @@ export default function ProgramEditorPage() {
                 <Trash2 className="h-4 w-4" /> Supprimer
               </Button>
             </div>
-          </Card>
+          </Card>}
         </aside>
       </div>
 

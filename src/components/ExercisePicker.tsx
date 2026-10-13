@@ -5,6 +5,7 @@ import { Check, Plus, Search } from "lucide-react";
 import { Badge, Button, Input, LoadingBlock, Modal, Select, cn } from "./ui";
 import { ExerciseForm } from "./ExerciseForm";
 import { getSupabase } from "@/lib/supabase/client";
+import { useMode } from "@/lib/mode";
 import { matches } from "@/lib/format";
 import type { Exercise } from "@/lib/types";
 
@@ -28,6 +29,7 @@ export function ExercisePicker({
   const [selected, setSelected] = useState<Exercise[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const canCreate = useMode() === "coach";
 
   useEffect(() => {
     if (!open) return;
@@ -134,14 +136,14 @@ export function ExercisePicker({
               );
             })}
             {list.length === 0 && <p className="py-6 text-center text-sm text-ink-400">Aucun exercice trouvé.</p>}
-            <button
+            {canCreate && <button
               type="button"
               onClick={() => setCreateOpen(true)}
               className="mt-2 flex w-full items-center gap-2 rounded-xl border border-dashed border-ink-600 px-3 py-3 text-sm text-royal-300 transition hover:border-royal-500 hover:bg-royal-600/10"
             >
               <Plus className="h-4 w-4" />
               {q.trim() ? `Créer l'exercice « ${q.trim()} »` : "Créer un nouvel exercice"}
-            </button>
+            </button>}
           </div>
         )}
       </Modal>

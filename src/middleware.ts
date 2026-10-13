@@ -50,6 +50,8 @@ export async function middleware(request: NextRequest) {
     user = null;
   }
   const isPublic = PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + "/"));
+  const isClientUser = user?.app_metadata?.role === "client";
+  const inClientSpace = path === "/espace" || path.startsWith("/espace/");
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
@@ -60,9 +62,25 @@ export async function middleware(request: NextRequest) {
 
   if (user && path === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = isClientUser ? "/espace" : "/dashboard";
     url.search = "";
     return NextResponse.redirect(url);
+  }
+
+  // Un client n'accède qu'à son espace ; le coach n'a pas besoin de l'espace client.
+  if (user && !isPublic && !path.startsWith("/auth/")) {
+    if (isClientUser && !inClientSpace) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/espace";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+    if (!isClientUser && inClientSpace) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
   }
 
   return response;
