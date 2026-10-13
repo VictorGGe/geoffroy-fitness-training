@@ -118,7 +118,7 @@ export async function fetchProgramFull(id: string): Promise<{ program: Program; 
   const sessions = check(
     await sb
       .from("program_sessions")
-      .select("*, program_exercises(*, exercises(id, name, muscle_group, equipment))")
+      .select("*, program_exercises(*, exercises(id, name, muscle_group, equipment, description, execution_cues, video_url))")
       .eq("program_id", id)
       .order("position"),
   ) as ProgramSession[];

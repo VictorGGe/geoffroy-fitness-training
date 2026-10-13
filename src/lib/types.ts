@@ -80,7 +80,8 @@ export interface ProgramExercise {
   set_type: SetType | null;
   technical_cues: string | null;
   comments: string | null;
-  exercises?: Pick<Exercise, "id" | "name" | "muscle_group" | "equipment"> | null;
+  exercises?: (Pick<Exercise, "id" | "name" | "muscle_group" | "equipment"> &
+    Partial<Pick<Exercise, "description" | "execution_cues" | "video_url">>) | null;
 }
 
 export interface WorkoutLog {

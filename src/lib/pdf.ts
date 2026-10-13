@@ -287,13 +287,50 @@ export async function exportProgramPdf(program: Program, sessions: ProgramSessio
           t(pe.tempo) || "-",
         ]);
       }
-      const notes = [pe.technical_cues && `Consignes : ${pe.technical_cues}`, pe.comments && `Note : ${pe.comments}`].filter(Boolean).join("\n");
+      const span = mobile ? 4 : 9;
+      const ex = pe.exercises;
+      const notes = [
+        ex?.description && `Explications : ${ex.description}`,
+        ex?.execution_cues && `Exécution : ${ex.execution_cues}`,
+        pe.technical_cues && `Consignes : ${pe.technical_cues}`,
+        pe.comments && `Note : ${pe.comments}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const video = ex?.video_url && /^https?:\/\//i.test(ex.video_url) ? ex.video_url : null;
+      const padLeft = mobile ? 2 : 10;
       if (notes) {
         body.push([
           {
             content: t(notes),
-            colSpan: mobile ? 4 : 9,
-            styles: { fontStyle: "italic", textColor: [70, 78, 95], fillColor: [248, 249, 252], fontSize: L.fs(8), cellPadding: { top: 1.2, bottom: 2.2, left: mobile ? 2 : 10, right: 2 } },
+            colSpan: span,
+            styles: {
+              fontStyle: "italic",
+              textColor: [70, 78, 95],
+              fillColor: [248, 249, 252],
+              fontSize: L.fs(8),
+              halign: "left",
+              cellPadding: { top: 1.2, bottom: video ? 0.6 : 2.2, left: padLeft, right: 2 },
+              lineWidth: video ? 0 : { bottom: 0.15 },
+            },
+          } as CellInput,
+        ]);
+      }
+      if (video) {
+        const shown = video.replace(/^https?:\/\/(www\.)?/i, "");
+        body.push([
+          {
+            content: t(`> Voir la vidéo de démonstration : ${shown.length > 60 ? shown.slice(0, 57) + "..." : shown}`),
+            colSpan: span,
+            videoUrl: video,
+            styles: {
+              fontStyle: "bold",
+              textColor: ROYAL,
+              fillColor: [248, 249, 252],
+              fontSize: L.fs(8),
+              halign: "left",
+              cellPadding: { top: notes ? 0.6 : 1.2, bottom: 2.2, left: padLeft, right: 2 },
+            },
           } as CellInput,
         ]);
       }
@@ -302,6 +339,12 @@ export async function exportProgramPdf(program: Program, sessions: ProgramSessio
     autoTable(doc, {
       startY: y,
       margin: { left: M, right: M, bottom: 16 },
+      didDrawCell: (data) => {
+        const url = (data.cell.raw as { videoUrl?: string } | null)?.videoUrl;
+        if (data.section === "body" && url) {
+          doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url });
+        }
+      },
       head: [mobile ? ["Exercice", "Charge", "RPE/RIR", "Repos"] : ["#", "Exercice", "Séries", "Reps", "Charge", "RPE", "RIR", "Repos", "Tempo"].map(t)],
       body,
       theme: "plain",
