@@ -2,10 +2,20 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 /** Routes accessibles sans être connecté. Tout le reste est privé. */
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/auth/callback", "/reset-password"];
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/auth/callback", "/reset-password", "/diagnostic"];
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const path = request.nextUrl.pathname;
+
+  // Configuration absente : on affiche la page de diagnostic au lieu d'une erreur 500.
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    if (path === "/diagnostic") return response;
+    const url = request.nextUrl.clone();
+    url.pathname = "/diagnostic";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,11 +35,12 @@ export async function middleware(request: NextRequest) {
   );
 
   // Vérifie l'utilisateur auprès du serveur d'authentification (ne pas se fier au seul cookie).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const path = request.nextUrl.pathname;
+  let user = null;
+  try {
+    user = (await supabase.auth.getUser()).data.user;
+  } catch {
+    user = null;
+  }
   const isPublic = PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + "/"));
 
   if (!user && !isPublic) {
