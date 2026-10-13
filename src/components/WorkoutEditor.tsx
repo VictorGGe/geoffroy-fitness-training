@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowLeft, ArrowUp, History, Plus, Target, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, History, Plus, Target, Timer, Trash2, X } from "lucide-react";
+import { RestTimer, unlockAudio, type RestRequest } from "./RestTimer";
 import { Badge, Button, Card, ConfirmDialog, Field, Input, LoadingBlock, PageHeader, Select, Textarea, cn } from "./ui";
 import { ExercisePicker } from "./ExercisePicker";
 import { useToast } from "./toast";
@@ -89,6 +90,25 @@ export function WorkoutEditor({
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rest, setRest] = useState<(RestRequest & { blockKey: string; si: number }) | null>(null);
+
+  /** Lance le chrono de repos après la série si (temps prévu, sinon 90 s). */
+  function startRest(bi: number, si: number) {
+    const b = blocks[bi];
+    if (!b) return;
+    unlockAudio();
+    const row = b.sets[si];
+    const seconds = (row && parseRest(row.rest)) || b.planned?.rest_seconds || 90;
+    setRest({ id: uid(), label: `Repos · ${b.exercise_name} · série ${si + 1}`, seconds, blockKey: b.key, si });
+  }
+
+  function finishRest(elapsed: number) {
+    if (rest) {
+      const bi = blocks.findIndex((b) => b.key === rest.blockKey);
+      if (bi >= 0 && blocks[bi].sets[rest.si]) updateSet(bi, rest.si, { rest: String(elapsed) });
+    }
+    setRest(null);
+  }
 
   // Chargement initial
   useEffect(() => {
@@ -564,7 +584,18 @@ export function WorkoutEditor({
                             <input inputMode="numeric" className="input-sm w-16" value={s.rest} onChange={(e) => updateSet(bi, si, { rest: e.target.value })} />
                           </td>
                           <td className="py-1 pr-2 text-right tabular-nums text-ink-400">{e1 ? fmtNum(e1) : "—"}</td>
-                          <td className="py-1 text-right">
+                          <td className="whitespace-nowrap py-1 text-right">
+                            <button
+                              onClick={() => startRest(bi, si)}
+                              className={cn(
+                                "rounded-md p-1 hover:bg-ink-750",
+                                rest?.blockKey === b.key && rest.si === si ? "text-royal-300" : "text-ink-400 hover:text-royal-300",
+                              )}
+                              aria-label={`Lancer le repos après la série ${si + 1}`}
+                              title="Lancer le chrono de repos"
+                            >
+                              <Timer className="h-4 w-4" />
+                            </button>
                             <button
                               onClick={() => removeSet(bi, si)}
                               className="rounded-md p-1 text-ink-500 hover:bg-ink-750 hover:text-red-300"
@@ -583,7 +614,16 @@ export function WorkoutEditor({
                 <Button size="sm" variant="ghost" onClick={() => addSet(bi)} className="text-royal-300">
                   <Plus className="h-4 w-4" /> Ajouter une série
                 </Button>
-                <span className="text-xs text-ink-500">{b.sets.length} série(s)</span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    const lastFilled = b.sets.reduce((acc, s, i) => (s.load || s.reps ? i : acc), 0);
+                    startRest(bi, lastFilled);
+                  }}
+                >
+                  <Timer className="h-4 w-4" /> Repos{b.planned?.rest_seconds != null ? ` ${fmtRest(b.planned.rest_seconds)}` : ""}
+                </Button>
               </div>
             </section>
           );
@@ -603,7 +643,9 @@ export function WorkoutEditor({
 
         {error && <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</p>}
 
-        <div className="sticky bottom-20 z-20 flex justify-end gap-2 rounded-2xl border border-ink-700 bg-ink-900/95 p-3 backdrop-blur lg:bottom-4">
+        <div className="sticky bottom-20 z-20 space-y-2 lg:bottom-4">
+          <RestTimer request={rest} onDone={finishRest} onClose={() => setRest(null)} />
+        <div className="flex justify-end gap-2 rounded-2xl border border-ink-700 bg-ink-900/95 p-3 backdrop-blur">
           <span className="mr-auto hidden self-center text-sm text-ink-400 sm:block">
             {blocks.length} exercice(s) ·{" "}
             {blocks.reduce((n, b) => n + b.sets.filter((s) => s.load || s.reps).length, 0)} série(s) renseignée(s)
@@ -614,6 +656,7 @@ export function WorkoutEditor({
           <Button onClick={save} loading={saving}>
             Enregistrer la séance
           </Button>
+        </div>
         </div>
       </div>
 

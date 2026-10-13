@@ -22,4 +22,4 @@ export const SUPABASE_URL = normalizeUrl(clean(process.env.NEXT_PUBLIC_SUPABASE_
 export const SUPABASE_KEY = clean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, "NEXT_PUBLIC_SUPABASE_ANON_KEY");
 
 export const SUPABASE_CONFIG_OK =
-  /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/.test(SUPABASE_URL) && SUPABASE_KEY.length > 20;
+  /^https?:\/\/[^\s/]+(:\d+)?$/.test(SUPABASE_URL) && SUPABASE_KEY.length > 20;
