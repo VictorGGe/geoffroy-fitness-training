@@ -5,9 +5,8 @@ import { forwardRef, useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, Loader2, X } from "lucide-react";
 
-export function cn(...c: (string | false | null | undefined)[]) {
-  return c.filter(Boolean).join(" ");
-}
+import { cn } from "@/lib/cn";
+export { cn };
 
 /* ------------------------------------------------------------------ */
 /* Boutons                                                             */

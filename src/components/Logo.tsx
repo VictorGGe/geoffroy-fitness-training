@@ -1,4 +1,4 @@
-import { cn } from "./ui";
+import { cn } from "@/lib/cn";
 
 export function Logo({ size = "md", collapsed = false }: { size?: "md" | "lg"; collapsed?: boolean }) {
   const big = size === "lg";

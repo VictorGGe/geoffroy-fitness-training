@@ -1,35 +1,34 @@
 import { AuthShell } from "@/components/AuthShell";
+import { SUPABASE_KEY, SUPABASE_URL } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
 type Check = { label: string; ok: boolean; detail: string };
 
 async function runChecks(): Promise<Check[]> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const rawKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+  const url = SUPABASE_URL;
+  const key = SUPABASE_KEY;
   const checks: Check[] = [];
 
   checks.push({
     label: "Adresse Supabase (NEXT_PUBLIC_SUPABASE_URL)",
-    ok: /^https:\/\/[a-z0-9]{20}\.supabase\.co\/?$/.test(url.trim()),
-    detail: !url
-      ? "Absente dans Vercel."
-      : url !== url.trim()
-        ? "Contient des espaces au début ou à la fin."
-        : /^https:\/\/[a-z0-9]{20}\.supabase\.co\/?$/.test(url)
-          ? url
-          : `Format inattendu : « ${url.slice(0, 60)} ». Attendu : https://xxxxxxxx.supabase.co`,
+    ok: /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/.test(url),
+    detail: !rawUrl
+      ? "Absente dans Vercel (le nom doit être exactement NEXT_PUBLIC_SUPABASE_URL)."
+      : /^https:\/\/[a-z0-9-]+\.supabase\.(co|in)$/.test(url)
+        ? url + (rawUrl !== url ? " (corrigée automatiquement)" : "")
+        : `Format inattendu : « ${rawUrl.slice(0, 60)} ». Attendu : https://xxxxxxxx.supabase.co`,
   });
 
-  const keyOk = key.trim() === key && (/^sb_publishable_[\w-]{10,}$/.test(key) || /^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(key));
+  const keyOk = (/^sb_publishable_[\w-]{10,}$/.test(key) || /^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(key));
   checks.push({
     label: "Clé publique (NEXT_PUBLIC_SUPABASE_ANON_KEY)",
     ok: keyOk,
-    detail: !key
-      ? "Absente dans Vercel."
-      : key !== key.trim()
-        ? "Contient des espaces au début ou à la fin."
-        : /^sb_secret_/.test(key)
+    detail: !rawKey
+      ? "Absente dans Vercel (le nom doit être exactement NEXT_PUBLIC_SUPABASE_ANON_KEY)."
+      : /^sb_secret_/.test(key)
           ? "Attention : c'est la clé SECRÈTE. Remplacez-la par la clé publishable / anon."
           : keyOk
             ? `${key.slice(0, 18)}… (${key.length} caractères)`
