@@ -76,7 +76,11 @@ export async function createProgramFromStarter(templateKey: string, input: NewPr
             exercise_id: ids.get(normalize(e.name)),
             position: j,
             sets: e.sets,
-            reps: e.reps,
+            reps: e.reps ?? null,
+            duration_seconds: e.duration ?? null,
+            intensity: e.intensity ?? null,
+            hr_min: e.hr?.[0] ?? null,
+            hr_max: e.hr?.[1] ?? null,
             rpe: e.rpe ?? null,
             rir: e.rir ?? null,
             rest_seconds: e.rest ?? null,
@@ -102,6 +106,11 @@ const EXERCISE_FIELDS = [
   "set_type",
   "technical_cues",
   "comments",
+  "duration_seconds",
+  "distance_km",
+  "intensity",
+  "hr_min",
+  "hr_max",
 ] as const;
 
 function pickExercise(e: ProgramExercise) {
@@ -118,7 +127,7 @@ export async function fetchProgramFull(id: string): Promise<{ program: Program; 
   const sessions = check(
     await sb
       .from("program_sessions")
-      .select("*, program_exercises(*, exercises(id, name, muscle_group, equipment, description, execution_cues, video_url))")
+      .select("*, program_exercises(*, exercises(id, name, muscle_group, equipment, movement_type, description, execution_cues, video_url))")
       .eq("program_id", id)
       .order("position"),
   ) as ProgramSession[];

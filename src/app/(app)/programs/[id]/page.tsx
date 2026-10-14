@@ -75,6 +75,11 @@ import {
   parseNum,
   parseRest,
   SET_TYPE_LABELS,
+  cardioSummary,
+  durationInput,
+  isCardioExercise,
+  parseDuration,
+  parseHrRange,
 } from "@/lib/format";
 import type { Client, Exercise, ProgramExercise, ProgramSession } from "@/lib/types";
 
@@ -136,7 +141,13 @@ export default function ProgramEditorPage() {
     await run(
       () =>
         sb.from("program_exercises").insert(
-          exs.map((e, i) => ({ session_id: sessionId, exercise_id: e.id, position: start + i, set_type: "travail" })),
+          exs.map((e, i) => ({
+            session_id: sessionId,
+            exercise_id: e.id,
+            position: start + i,
+            set_type: "travail",
+            sets: isCardioExercise(e) ? 1 : null,
+          })),
         ),
       exs.length > 1 ? `${exs.length} exercices ajoutés.` : "Exercice ajouté.",
     );
@@ -538,9 +549,15 @@ function SessionCard({
   );
 }
 
-function paramsSummary(pe: Pick<ProgramExercise, "sets" | "reps" | "load_kg" | "rpe" | "rir" | "rest_seconds" | "tempo">) {
+function paramsSummary(pe: ProgramExercise) {
   const parts: string[] = [];
-  if (pe.sets || pe.reps) parts.push(`${pe.sets ?? "?"} × ${pe.reps ?? "?"}`);
+  const cardio = cardioSummary(pe);
+  if (cardio.length) {
+    if (pe.sets && pe.sets > 1) parts.push(`${pe.sets} ×`);
+    parts.push(...cardio);
+  }
+  if (pe.reps) parts.push(`${pe.sets ?? "?"} × ${pe.reps}`);
+  else if (pe.sets && !cardio.length) parts.push(`${pe.sets} série(s)`);
   if (num(pe.load_kg) !== null) parts.push(`${fmtNum(pe.load_kg, 2)} kg`);
   if (num(pe.rpe) !== null) parts.push(`RPE ${fmtNum(pe.rpe)}`);
   if (pe.rir !== null && pe.rir !== undefined) parts.push(`RIR ${pe.rir}`);
@@ -670,7 +687,14 @@ function ParamsEditor({
     set_type: pe.set_type ?? "",
     technical_cues: pe.technical_cues ?? "",
     comments: pe.comments ?? "",
+    duration: durationInput(pe.duration_seconds),
+    distance: num(pe.distance_km)?.toString().replace(".", ",") ?? "",
+    intensity: pe.intensity ?? "",
+    hr: pe.hr_min != null ? (pe.hr_max != null && pe.hr_max !== pe.hr_min ? `${pe.hr_min}-${pe.hr_max}` : String(pe.hr_min)) : "",
   });
+  const [cardio, setCardio] = useState(
+    isCardioExercise(pe.exercises) || pe.duration_seconds != null || num(pe.distance_km) !== null || pe.hr_min != null || !!pe.intensity,
+  );
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
@@ -689,6 +713,12 @@ function ParamsEditor({
     if (f.rpe && (rpe === null || rpe < 1 || rpe > 10)) return setErr("RPE : entre 1 et 10.");
     if (f.rir && (rir === null || !Number.isInteger(rir) || rir < 0 || rir > 10)) return setErr("RIR : entier entre 0 et 10.");
     if (f.rest.trim() && (rest === null || rest > 3600)) return setErr("Repos : ex. 90, 90 s, 2 min ou 2:30.");
+    const duration = f.duration.trim() ? parseDuration(f.duration) : null;
+    if (f.duration.trim() && (duration === null || duration > 86400)) return setErr("Durée : ex. 20 (minutes), 32:30 ou 1h15.");
+    const distance = parseNum(f.distance);
+    if (f.distance.trim() && (distance === null || distance < 0 || distance > 1000)) return setErr("Distance invalide (en km).");
+    const hr = parseHrRange(f.hr);
+    if (hr === "invalid") return setErr("FC cible : ex. 140 ou 130-150 (bpm).");
     setSaving(true);
     try {
       await onSave({
@@ -702,6 +732,11 @@ function ParamsEditor({
         set_type: (emptyToNull(f.set_type) as ProgramExercise["set_type"]) ?? null,
         technical_cues: emptyToNull(f.technical_cues),
         comments: emptyToNull(f.comments),
+        duration_seconds: duration,
+        distance_km: distance,
+        intensity: emptyToNull(f.intensity),
+        hr_min: hr[0],
+        hr_max: hr[1],
       });
     } finally {
       setSaving(false);
@@ -710,6 +745,52 @@ function ParamsEditor({
 
   return (
     <form onSubmit={submit} className="border-t border-ink-700/60 bg-ink-900/70 px-3 py-4 sm:px-5 animate-fade-in">
+      <div className="mb-4 inline-flex rounded-lg border border-ink-700 bg-ink-900 p-0.5 text-xs font-medium">
+        {[
+          { v: false, label: "Musculation" },
+          { v: true, label: "Cardio" },
+        ].map((o) => (
+          <button
+            key={o.label}
+            type="button"
+            onClick={() => setCardio(o.v)}
+            className={cn("rounded-md px-3 py-1.5 transition", cardio === o.v ? "bg-royal-600 text-white" : "text-ink-400 hover:text-ink-100")}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+      {cardio ? (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Field label="Durée" hint="Minutes, ou 32:30, 1h15">
+          <Input value={f.duration} onChange={set("duration")} placeholder="30" />
+        </Field>
+        <Field label="Distance (km)">
+          <Input inputMode="decimal" value={f.distance} onChange={set("distance")} placeholder="5" />
+        </Field>
+        <Field label="FC cible (bpm)" hint="Ex. 130-150">
+          <Input value={f.hr} onChange={set("hr")} placeholder="130-150" />
+        </Field>
+        <Field label="RPE cible">
+          <Input inputMode="decimal" value={f.rpe} onChange={set("rpe")} placeholder="6" />
+        </Field>
+        <Field label="Intensité" className="col-span-2" hint="Zone, allure, vitesse, % FC max…">
+          <Input value={f.intensity} onChange={set("intensity")} placeholder="Zone 2 · allure 6:00/km" maxLength={60} />
+        </Field>
+        <Field label="Blocs / répétitions">
+          <Input inputMode="numeric" value={f.sets} onChange={set("sets")} placeholder="1" />
+        </Field>
+        <Field label="Récup. entre blocs">
+          <Input value={f.rest} onChange={set("rest")} placeholder="1:30" />
+        </Field>
+        <Field label="Consignes" className="col-span-2 sm:col-span-4">
+          <Textarea value={f.technical_cues} onChange={set("technical_cues")} rows={2} placeholder="Ex. : rester en aisance respiratoire, cadence 85-90 rpm" maxLength={2000} />
+        </Field>
+        <Field label="Commentaire" className="col-span-2 sm:col-span-4">
+          <Textarea value={f.comments} onChange={set("comments")} rows={2} maxLength={2000} />
+        </Field>
+      </div>
+      ) : (
       <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
         <Field label="Séries">
           <Input inputMode="numeric" value={f.sets} onChange={set("sets")} placeholder="4" />
@@ -749,6 +830,7 @@ function ParamsEditor({
           <Textarea value={f.comments} onChange={set("comments")} rows={2} maxLength={2000} />
         </Field>
       </div>
+      )}
       {err && <p className="mt-3 text-sm text-red-400">{err}</p>}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <Button size="sm" variant="ghost" onClick={onSwap}>

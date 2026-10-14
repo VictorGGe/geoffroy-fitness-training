@@ -80,8 +80,13 @@ export interface ProgramExercise {
   set_type: SetType | null;
   technical_cues: string | null;
   comments: string | null;
+  duration_seconds?: number | null;
+  distance_km?: number | null;
+  intensity?: string | null;
+  hr_min?: number | null;
+  hr_max?: number | null;
   exercises?: (Pick<Exercise, "id" | "name" | "muscle_group" | "equipment"> &
-    Partial<Pick<Exercise, "description" | "execution_cues" | "video_url">>) | null;
+    Partial<Pick<Exercise, "description" | "execution_cues" | "video_url" | "movement_type">>) | null;
 }
 
 export interface WorkoutLog {
@@ -115,6 +120,16 @@ export interface WorkoutSet {
   rir: number | null;
   rest_seconds: number | null;
   comment: string | null;
+  duration_seconds?: number | null;
+  distance_km?: number | null;
+  intensity?: string | null;
+  hr_avg?: number | null;
+  hr_max?: number | null;
+  planned_duration_seconds?: number | null;
+  planned_distance_km?: number | null;
+  planned_intensity?: string | null;
+  planned_hr_min?: number | null;
+  planned_hr_max?: number | null;
 }
 
 export interface WeightGoal {

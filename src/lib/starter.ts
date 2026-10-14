@@ -61,13 +61,26 @@ export const STARTER_EXERCISES: StarterExercise[] = [
   { name: "Tirage d'arraché", muscle_group: "Dos", equipment: "Barre", movement_type: "Haltérophilie" },
   // Cardio / conditionnement
   { name: "Kettlebell swing", muscle_group: "Fessiers", equipment: "Kettlebell", movement_type: "Charnière de hanche" },
-  { name: "Rameur", muscle_group: "Cardio", equipment: "Machine", movement_type: "Cardio" },
+  { name: "Rameur", muscle_group: "Cardio", equipment: "Machine", movement_type: "Cardio", execution_cues: "Poussée des jambes, puis bascule du buste, puis tirage des bras. Retour dans l'ordre inverse." },
+  { name: "Course à pied", muscle_group: "Cardio", equipment: "Aucun", movement_type: "Cardio", execution_cues: "Foulée souple, buste légèrement penché vers l'avant, respiration régulière." },
+  { name: "Tapis de course", muscle_group: "Cardio", equipment: "Machine", movement_type: "Cardio" },
+  { name: "Marche inclinée sur tapis", muscle_group: "Cardio", equipment: "Machine", movement_type: "Cardio", execution_cues: "Ne pas se tenir aux barres, pas réguliers, buste droit." },
+  { name: "Vélo d'appartement", muscle_group: "Cardio", equipment: "Machine", movement_type: "Cardio" },
+  { name: "Vélo elliptique", muscle_group: "Cardio", equipment: "Machine", movement_type: "Cardio" },
+  { name: "Assault bike", muscle_group: "Cardio", equipment: "Machine", movement_type: "Cardio" },
+  { name: "SkiErg", muscle_group: "Cardio", equipment: "Machine", movement_type: "Cardio" },
+  { name: "Stepper / escalier", muscle_group: "Cardio", equipment: "Machine", movement_type: "Cardio" },
+  { name: "Corde à sauter", muscle_group: "Cardio", equipment: "Corde", movement_type: "Cardio" },
+  { name: "Natation", muscle_group: "Cardio", equipment: "Piscine", movement_type: "Cardio" },
 ];
 
 export interface TemplateExercise {
   name: string;
   sets: number;
-  reps: string;
+  reps?: string;
+  duration?: number; // secondes (cardio)
+  intensity?: string;
+  hr?: [number, number];
   rpe?: number;
   rir?: number;
   rest?: number; // secondes
@@ -92,6 +105,16 @@ const T = (name: string, sets: number, reps: string, rest: number, rpe?: number,
 });
 
 /** Modèles de départ : simples points de départ, entièrement modifiables après création. */
+const C = (name: string, minutes: number, intensity: string, hr?: [number, number], sets = 1, rest?: number): TemplateExercise => ({
+  name,
+  sets,
+  duration: minutes * 60,
+  intensity,
+  hr,
+  rest,
+  set_type: "travail",
+});
+
 export const STARTER_TEMPLATES: StarterTemplate[] = [
   {
     key: "custom",
@@ -170,6 +193,16 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     sessions: [
       { name: "Séance A — Haut", exercises: [T("Développé incliné aux haltères", 4, "8-12", 120, 9, 1), T("Tirage vertical prise large", 4, "10-12", 90, 9, 1), T("Développé couché aux haltères", 3, "10-12", 90, 9, 1), T("Rowing haltère unilatéral", 3, "10-12", 90, 9, 1), T("Élévations latérales", 4, "15-20", 45, 9, 1), T("Curl haltères incliné", 3, "10-12", 60, 9, 1)] },
       { name: "Séance B — Bas", exercises: [T("Presse à cuisses", 4, "10-12", 120, 9, 1), T("Soulevé de terre roumain", 4, "8-10", 120, 8, 2), T("Squat bulgare", 3, "10-12", 90, 9, 1), T("Leg extension", 3, "12-15", 60, 9, 1), T("Leg curl allongé", 3, "12-15", 60, 9, 1), T("Mollets debout", 4, "12-15", 45, 9, 1)] },
+    ],
+  },
+  {
+    key: "cardio",
+    label: "Cardio / Endurance",
+    description: "Endurance fondamentale, fractionné et renforcement.",
+    sessions: [
+      { name: "Endurance fondamentale", exercises: [C("Vélo d'appartement", 10, "Échauffement progressif", [110, 130]), C("Course à pied", 35, "Zone 2 — aisance respiratoire", [130, 145]), C("Marche inclinée sur tapis", 10, "Retour au calme", [100, 120])] },
+      { name: "Fractionné", exercises: [C("Rameur", 8, "Échauffement", [110, 130]), C("Assault bike", 0.5, "Sprint 90 %", [165, 180], 8, 90), C("Vélo elliptique", 10, "Récupération active", [110, 125])] },
+      { name: "Circuit cardio-renfo", exercises: [C("Corde à sauter", 5, "Modérée", [130, 150]), T("Kettlebell swing", 4, "15", 60, 8), T("Fentes marchées aux haltères", 3, "12", 60, 8), C("SkiErg", 1, "Soutenue", [150, 165], 5, 60)] },
     ],
   },
   {

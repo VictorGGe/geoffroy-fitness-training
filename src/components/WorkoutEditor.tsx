@@ -22,6 +22,11 @@ import {
   parseNum,
   parseRest,
   SET_TYPE_LABELS,
+  cardioSummary,
+  durationInput,
+  fmtDuration,
+  isCardioExercise,
+  parseDuration,
   todayISO,
 } from "@/lib/format";
 import { estimate1RM } from "@/lib/calc";
@@ -30,6 +35,11 @@ import type { Client, Program, ProgramSession, SetType, WorkoutLog, WorkoutSet }
 interface SetRow {
   load: string;
   reps: string;
+  duration: string;
+  distance: string;
+  intensity: string;
+  hr_avg: string;
+  hr_max: string;
   rpe: string;
   rir: string;
   rest: string;
@@ -44,20 +54,42 @@ interface Planned {
   rir: number | null;
   rest_seconds: number | null;
   technical_cues: string | null;
+  duration_seconds?: number | null;
+  distance_km?: number | null;
+  intensity?: string | null;
+  hr_min?: number | null;
+  hr_max?: number | null;
 }
 interface Block {
   key: string;
   exercise_id: string | null;
   exercise_name: string;
+  cardio: boolean;
   planned: Planned | null;
   sets: SetRow[];
 }
 
-const emptySet = (set_type: SetType | "" = "travail"): SetRow => ({ load: "", reps: "", rpe: "", rir: "", rest: "", comment: "", set_type });
+const emptySet = (set_type: SetType | "" = "travail"): SetRow => ({
+  load: "",
+  reps: "",
+  duration: "",
+  distance: "",
+  intensity: "",
+  hr_avg: "",
+  hr_max: "",
+  rpe: "",
+  rir: "",
+  rest: "",
+  comment: "",
+  set_type,
+});
 const uid = () => Math.random().toString(36).slice(2, 10);
 const str = (v: unknown) => (num(v) === null ? "" : String(num(v)).replace(".", ","));
 
-type LastPerf = { date: string; sets: { load: number | null; reps: number | null; rpe: number | null }[] };
+type LastPerf = {
+  date: string;
+  sets: { load: number | null; reps: number | null; rpe: number | null; duration: number | null; distance: number | null; hr: number | null }[];
+};
 
 export function WorkoutEditor({
   logId,
@@ -147,8 +179,16 @@ export function WorkoutEditor({
               key: `o${s.exercise_order}`,
               exercise_id: s.exercise_id,
               exercise_name: s.exercise_name,
+              cardio: false,
               planned:
-                s.planned_reps || s.planned_load_kg != null || s.planned_rpe != null || s.planned_rir != null
+                s.planned_reps ||
+                s.planned_load_kg != null ||
+                s.planned_rpe != null ||
+                s.planned_rir != null ||
+                s.planned_duration_seconds != null ||
+                s.planned_distance_km != null ||
+                s.planned_intensity ||
+                s.planned_hr_min != null
                   ? {
                       sets: null,
                       reps: s.planned_reps,
@@ -157,15 +197,34 @@ export function WorkoutEditor({
                       rir: s.planned_rir,
                       rest_seconds: null,
                       technical_cues: null,
+                      duration_seconds: s.planned_duration_seconds ?? null,
+                      distance_km: num(s.planned_distance_km),
+                      intensity: s.planned_intensity ?? null,
+                      hr_min: s.planned_hr_min ?? null,
+                      hr_max: s.planned_hr_max ?? null,
                     }
                   : null,
               sets: [],
             };
             grouped.push(b);
           }
+          if (
+            s.duration_seconds != null ||
+            s.distance_km != null ||
+            s.hr_avg != null ||
+            s.hr_max != null ||
+            s.intensity ||
+            s.planned_duration_seconds != null
+          )
+            b.cardio = true;
           b.sets.push({
             load: str(s.load_kg),
             reps: s.reps?.toString() ?? "",
+            duration: durationInput(s.duration_seconds),
+            distance: str(s.distance_km),
+            intensity: s.intensity ?? "",
+            hr_avg: s.hr_avg?.toString() ?? "",
+            hr_max: s.hr_max?.toString() ?? "",
             rpe: str(s.rpe),
             rir: s.rir?.toString() ?? "",
             rest: s.rest_seconds != null ? String(s.rest_seconds) : "",
@@ -210,6 +269,7 @@ export function WorkoutEditor({
         key: uid(),
         exercise_id: pe.exercise_id,
         exercise_name: pe.exercises?.name ?? "Exercice",
+        cardio: isCardioExercise(pe.exercises) || pe.duration_seconds != null || num(pe.distance_km) !== null || pe.hr_min != null,
         planned: {
           sets: pe.sets,
           reps: pe.reps,
@@ -218,6 +278,11 @@ export function WorkoutEditor({
           rir: pe.rir,
           rest_seconds: pe.rest_seconds,
           technical_cues: pe.technical_cues,
+          duration_seconds: pe.duration_seconds ?? null,
+          distance_km: num(pe.distance_km),
+          intensity: pe.intensity ?? null,
+          hr_min: pe.hr_min ?? null,
+          hr_max: pe.hr_max ?? null,
         },
         sets: Array.from({ length: Math.max(1, Math.min(pe.sets ?? 1, 12)) }, () => ({
           ...emptySet(pe.set_type ?? "travail"),
@@ -234,7 +299,7 @@ export function WorkoutEditor({
     (async () => {
       const { data } = await sb
         .from("workout_sets")
-        .select("exercise_id, load_kg, reps, rpe, set_number, set_type, workout_log_id, workout_logs!inner(client_id, performed_on)")
+        .select("exercise_id, load_kg, reps, rpe, duration_seconds, distance_km, hr_avg, set_number, set_type, workout_log_id, workout_logs!inner(client_id, performed_on)")
         .eq("workout_logs.client_id", clientId)
         .in("exercise_id", exerciseIds)
         .order("set_number");
@@ -249,7 +314,14 @@ export function WorkoutEditor({
           date: lastDate,
           sets: mine
             .filter((r) => r.workout_log_id === lastLog)
-            .map((r) => ({ load: num(r.load_kg), reps: num(r.reps), rpe: num(r.rpe) })),
+            .map((r) => ({
+              load: num(r.load_kg),
+              reps: num(r.reps),
+              rpe: num(r.rpe),
+              duration: r.duration_seconds ?? null,
+              distance: num(r.distance_km),
+              hr: r.hr_avg ?? null,
+            })),
         };
       }
       setLastPerf(res);
@@ -297,8 +369,18 @@ export function WorkoutEditor({
         const rpe = parseNum(s.rpe);
         const rir = parseNum(s.rir);
         const rest = s.rest.trim() ? parseRest(s.rest) : null;
-        const filled = [s.load, s.reps, s.rpe, s.rir, s.comment].some((v) => v.trim() !== "");
+        const duration = s.duration.trim() ? parseDuration(s.duration) : null;
+        const distance = parseNum(s.distance);
+        const hrAvg = parseNum(s.hr_avg);
+        const hrMax = parseNum(s.hr_max);
+        const filled = [s.load, s.reps, s.rpe, s.rir, s.comment, s.duration, s.distance, s.intensity, s.hr_avg, s.hr_max].some(
+          (v) => v.trim() !== "",
+        );
         if (!filled) continue;
+        if (s.duration.trim() && (duration === null || duration > 86400)) return setError(`${b.exercise_name} : durée invalide (ex. 30, 32:30, 1h15).`);
+        if (s.distance.trim() && (distance === null || distance < 0 || distance > 1000)) return setError(`${b.exercise_name} : distance invalide (km).`);
+        if (s.hr_avg.trim() && (hrAvg === null || !Number.isInteger(hrAvg) || hrAvg < 30 || hrAvg > 250)) return setError(`${b.exercise_name} : FC moyenne invalide (30 à 250 bpm).`);
+        if (s.hr_max.trim() && (hrMax === null || !Number.isInteger(hrMax) || hrMax < 30 || hrMax > 250)) return setError(`${b.exercise_name} : FC max invalide (30 à 250 bpm).`);
         if (s.load && (load === null || load < 0 || load > 1000)) return setError(`${b.exercise_name} : charge invalide.`);
         if (s.reps && (reps === null || !Number.isInteger(reps) || reps < 0 || reps > 200)) return setError(`${b.exercise_name} : répétitions invalides.`);
         if (s.rpe && (rpe === null || rpe < 1 || rpe > 10)) return setError(`${b.exercise_name} : RPE entre 1 et 10.`);
@@ -314,6 +396,16 @@ export function WorkoutEditor({
           planned_load_kg: b.planned?.load_kg ?? null,
           planned_rpe: b.planned?.rpe ?? null,
           planned_rir: b.planned?.rir ?? null,
+          planned_duration_seconds: b.planned?.duration_seconds ?? null,
+          planned_distance_km: b.planned?.distance_km ?? null,
+          planned_intensity: b.planned?.intensity ?? null,
+          planned_hr_min: b.planned?.hr_min ?? null,
+          planned_hr_max: b.planned?.hr_max ?? null,
+          duration_seconds: duration,
+          distance_km: distance,
+          intensity: emptyToNull(s.intensity),
+          hr_avg: hrAvg,
+          hr_max: hrMax,
           load_kg: load,
           reps,
           rpe,
@@ -479,11 +571,15 @@ export function WorkoutEditor({
                     <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-royal-300">
                       <Target className="h-3.5 w-3.5" />
                       <span>Prévu :</span>
-                      {(b.planned.sets || b.planned.reps) && (
+                      {b.planned.reps && (
                         <span>
-                          {b.planned.sets ?? "?"} × {b.planned.reps ?? "?"}
+                          {b.planned.sets ?? "?"} × {b.planned.reps}
                         </span>
                       )}
+                      {b.cardio && b.planned.sets != null && b.planned.sets > 1 && <span>{b.planned.sets} blocs</span>}
+                      {cardioSummary(b.planned).map((c) => (
+                        <span key={c}>{c}</span>
+                      ))}
                       {b.planned.load_kg != null && <span>{fmtNum(b.planned.load_kg, 2)} kg</span>}
                       {b.planned.rpe != null && <span>RPE {fmtNum(b.planned.rpe)}</span>}
                       {b.planned.rir != null && <span>RIR {b.planned.rir}</span>}
@@ -495,7 +591,15 @@ export function WorkoutEditor({
                     <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[12.5px] text-ink-400">
                       <History className="h-3.5 w-3.5" /> Dernière fois ({fmtDate(last.date)}) :
                       <span className="text-ink-200">
-                        {last.sets.map((s) => `${s.load != null ? fmtNum(s.load, 2) : "–"}×${s.reps ?? "–"}`).join(" · ")}
+                        {last.sets
+                          .map((s) =>
+                            b.cardio
+                              ? [s.duration != null ? fmtDuration(s.duration) : null, s.distance != null ? `${fmtNum(s.distance, 2)} km` : null, s.hr != null ? `${s.hr} bpm` : null]
+                                  .filter(Boolean)
+                                  .join(" ") || "—"
+                              : `${s.load != null ? fmtNum(s.load, 2) : "–"}×${s.reps ?? "–"}`,
+                          )
+                          .join(" · ")}
                       </span>
                     </p>
                   )}
@@ -519,6 +623,105 @@ export function WorkoutEditor({
                 </div>
               </header>
               <div className="overflow-x-auto px-2 py-2 sm:px-4">
+                {b.cardio ? (
+                <table className="w-full min-w-[560px] text-sm">
+                  <thead>
+                    <tr className="text-[11px] uppercase tracking-wider text-ink-500">
+                      <th className="w-8 py-1.5 text-left font-medium">#</th>
+                      <th className="py-1.5 text-left font-medium">Durée</th>
+                      <th className="py-1.5 text-left font-medium">Distance (km)</th>
+                      <th className="py-1.5 text-left font-medium">Intensité</th>
+                      <th className="py-1.5 text-left font-medium">FC moy.</th>
+                      <th className="py-1.5 text-left font-medium">FC max</th>
+                      <th className="py-1.5 text-left font-medium">RPE</th>
+                      <th className="w-8" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {b.sets.map((s, si) => (
+                      <tr key={si}>
+                        <td className="py-1 pr-2 font-semibold tabular-nums text-ink-400">{si + 1}</td>
+                        <td className="py-1 pr-2">
+                          <input
+                            className="input-sm w-20"
+                            value={s.duration}
+                            placeholder={b.planned?.duration_seconds != null ? durationInput(b.planned.duration_seconds) : "min"}
+                            onChange={(e) => updateSet(bi, si, { duration: e.target.value })}
+                            aria-label="Durée"
+                          />
+                        </td>
+                        <td className="py-1 pr-2">
+                          <input
+                            inputMode="decimal"
+                            className="input-sm w-20"
+                            value={s.distance}
+                            placeholder={b.planned?.distance_km != null ? str(b.planned.distance_km) : ""}
+                            onChange={(e) => updateSet(bi, si, { distance: e.target.value })}
+                            aria-label="Distance"
+                          />
+                        </td>
+                        <td className="py-1 pr-2">
+                          <input
+                            className="input-sm w-32"
+                            value={s.intensity}
+                            placeholder={b.planned?.intensity ?? "Zone 2, allure…"}
+                            onChange={(e) => updateSet(bi, si, { intensity: e.target.value })}
+                            maxLength={60}
+                            aria-label="Intensité"
+                          />
+                        </td>
+                        <td className="py-1 pr-2">
+                          <input
+                            inputMode="numeric"
+                            className="input-sm w-16"
+                            value={s.hr_avg}
+                            placeholder={b.planned?.hr_min != null ? String(b.planned.hr_min) : "bpm"}
+                            onChange={(e) => updateSet(bi, si, { hr_avg: e.target.value })}
+                            aria-label="FC moyenne"
+                          />
+                        </td>
+                        <td className="py-1 pr-2">
+                          <input
+                            inputMode="numeric"
+                            className="input-sm w-16"
+                            value={s.hr_max}
+                            placeholder={b.planned?.hr_max != null ? String(b.planned.hr_max) : "bpm"}
+                            onChange={(e) => updateSet(bi, si, { hr_max: e.target.value })}
+                            aria-label="FC max"
+                          />
+                        </td>
+                        <td className="py-1 pr-2">
+                          <input
+                            inputMode="decimal"
+                            className="input-sm w-14"
+                            value={s.rpe}
+                            placeholder={b.planned?.rpe != null ? str(b.planned.rpe) : ""}
+                            onChange={(e) => updateSet(bi, si, { rpe: e.target.value })}
+                            aria-label="RPE"
+                          />
+                        </td>
+                        <td className="whitespace-nowrap py-1 text-right">
+                          <button
+                            onClick={() => startRest(bi, si)}
+                            className="rounded-md p-1 text-ink-400 hover:bg-ink-750 hover:text-royal-300"
+                            aria-label={`Lancer la récupération après le bloc ${si + 1}`}
+                            title="Lancer le chrono de récupération"
+                          >
+                            <Timer className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => removeSet(bi, si)}
+                            className="rounded-md p-1 text-ink-500 hover:bg-ink-750 hover:text-red-300"
+                            aria-label="Supprimer le bloc"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                ) : (
                 <table className="w-full min-w-[520px] text-sm">
                   <thead>
                     <tr className="text-[11px] uppercase tracking-wider text-ink-500">
@@ -618,16 +821,17 @@ export function WorkoutEditor({
                     })}
                   </tbody>
                 </table>
+                )}
               </div>
               <div className="flex items-center justify-between border-t border-ink-750 px-4 py-2">
                 <Button size="sm" variant="ghost" onClick={() => addSet(bi)} className="text-royal-300">
-                  <Plus className="h-4 w-4" /> Ajouter une série
+                  <Plus className="h-4 w-4" /> {b.cardio ? "Ajouter un bloc" : "Ajouter une série"}
                 </Button>
                 <Button
                   size="sm"
                   variant="secondary"
                   onClick={() => {
-                    const lastFilled = b.sets.reduce((acc, s, i) => (s.load || s.reps ? i : acc), 0);
+                    const lastFilled = b.sets.reduce((acc, s, i) => (s.load || s.reps || s.duration || s.distance ? i : acc), 0);
                     startRest(bi, lastFilled);
                   }}
                 >
@@ -657,7 +861,7 @@ export function WorkoutEditor({
         <div className="flex justify-end gap-2 rounded-2xl border border-ink-700 bg-ink-900/95 p-3 backdrop-blur">
           <span className="mr-auto hidden self-center text-sm text-ink-400 sm:block">
             {blocks.length} exercice(s) ·{" "}
-            {blocks.reduce((n, b) => n + b.sets.filter((s) => s.load || s.reps).length, 0)} série(s) renseignée(s)
+            {blocks.reduce((n, b) => n + b.sets.filter((s) => s.load || s.reps || s.duration || s.distance).length, 0)} série(s) renseignée(s)
           </span>
           <Button variant="secondary" onClick={() => router.back()}>
             Annuler
@@ -675,7 +879,17 @@ export function WorkoutEditor({
         onPick={(exs) =>
           setBlocks((bs) => [
             ...bs,
-            ...exs.map((e) => ({ key: uid(), exercise_id: e.id, exercise_name: e.name, planned: null, sets: [emptySet(), emptySet(), emptySet()] })),
+            ...exs.map((e) => {
+              const cardio = isCardioExercise(e);
+              return {
+                key: uid(),
+                exercise_id: e.id,
+                exercise_name: e.name,
+                cardio,
+                planned: null,
+                sets: cardio ? [emptySet()] : [emptySet(), emptySet(), emptySet()],
+              };
+            }),
           ])
         }
       />

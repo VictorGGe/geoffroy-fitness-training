@@ -221,3 +221,98 @@ export function errorMessage(e: unknown): string {
   if (/Failed to fetch|NetworkError/i.test(msg)) return "Connexion impossible. Vérifiez votre réseau.";
   return msg;
 }
+
+/* ------------------------------------------------------------------ */
+/* Cardio                                                              */
+/* ------------------------------------------------------------------ */
+
+/** Un exercice est « cardio » s'il est classé comme tel dans la bibliothèque. */
+export function isCardioExercise(e: { movement_type?: string | null; muscle_group?: string | null } | null | undefined): boolean {
+  if (!e) return false;
+  return normalize(e.movement_type ?? "") === "cardio" || normalize(e.muscle_group ?? "") === "cardio";
+}
+
+/** Durée lisible : 45 s, 20 min, 1 h 05, 32:30 */
+export function fmtDuration(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined) return "—";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h) return `${h} h ${String(m).padStart(2, "0")}${s ? `:${String(s).padStart(2, "0")}` : ""}`;
+  if (m && s) return `${m}:${String(s).padStart(2, "0")}`;
+  if (m) return `${m} min`;
+  return `${s} s`;
+}
+
+/** Valeur de champ pour une durée (minutes ou mm:ss). */
+export function durationInput(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined) return "";
+  if (seconds % 60 === 0 && seconds < 3600 * 10) return String(seconds / 60);
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/**
+ * « 20 » ou « 20 min » → 20 min ; « 32:30 » → 32 min 30 ; « 1:05:00 » ou « 1h05 » → 1 h 05 ; « 45 s » → 45 s.
+ * Un nombre seul est compris en minutes.
+ */
+export function parseDuration(v: string): number | null {
+  const t = v.trim().toLowerCase().replace(",", ".");
+  if (!t) return null;
+  let m = t.match(/^(\d+):(\d{1,2}):(\d{1,2})$/);
+  if (m) return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+  m = t.match(/^(\d+):(\d{1,2})$/);
+  if (m) return Number(m[1]) * 60 + Number(m[2]);
+  m = t.match(/^(\d+)\s*h\s*(\d{1,2})?\s*(min|mn|m)?$/);
+  if (m) return Number(m[1]) * 3600 + Number(m[2] ?? 0) * 60;
+  m = t.match(/^(\d+(?:\.\d+)?)\s*(min|mn|m)?$/);
+  if (m) return Math.round(Number(m[1]) * 60);
+  m = t.match(/^(\d+)\s*(s|sec)$/);
+  if (m) return Number(m[1]);
+  return null;
+}
+
+/** « 130-150 » → [130, 150] ; « 140 » → [140, 140] */
+export function parseHrRange(v: string): [number | null, number | null] | "invalid" {
+  const t = v.trim();
+  if (!t) return [null, null];
+  const m = t.match(/^(\d{2,3})\s*(?:[-–à]+|a)\s*(\d{2,3})$/i);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (a < 30 || b > 250 || a > b) return "invalid";
+    return [a, b];
+  }
+  const one = t.match(/^(\d{2,3})$/);
+  if (one) {
+    const a = Number(one[1]);
+    if (a < 30 || a > 250) return "invalid";
+    return [a, a];
+  }
+  return "invalid";
+}
+
+export function fmtHrRange(min: number | null | undefined, max: number | null | undefined): string | null {
+  if (min == null && max == null) return null;
+  if (min != null && max != null && min !== max) return `${min}–${max} bpm`;
+  return `${min ?? max} bpm`;
+}
+
+/** Résumé des objectifs cardio d'un exercice de programme. */
+export function cardioSummary(pe: {
+  duration_seconds?: number | null;
+  distance_km?: number | null;
+  intensity?: string | null;
+  hr_min?: number | null;
+  hr_max?: number | null;
+}): string[] {
+  const parts: string[] = [];
+  if (pe.duration_seconds != null) parts.push(fmtDuration(pe.duration_seconds));
+  if (num(pe.distance_km) !== null) parts.push(`${fmtNum(pe.distance_km, 2)} km`);
+  if (pe.intensity) parts.push(pe.intensity);
+  const hr = fmtHrRange(pe.hr_min, pe.hr_max);
+  if (hr) parts.push(`FC ${hr}`);
+  return parts;
+}

@@ -380,3 +380,16 @@ Chaque client peut recevoir un accès à **son** espace, sur la même adresse qu
 Fiche client › onglet **Informations** › carte **Accès client** : saisissez l'e-mail, cliquez sur **Générer** (ou choisissez un mot de passe), puis **Créer l'accès**. Les identifiants s'affichent une fois, avec un bouton **Envoyer par e-mail** (message prérempli) et **Copier le message**. Depuis la même carte : changer le mot de passe ou retirer l'accès (les données sont conservées).
 
 > Les « notes personnelles » des fiches d'exercices sont visibles par les clients ayant un accès (elles servent aussi d'explications).
+
+---
+
+## 15. Exercices cardio
+
+Tout exercice dont le **type de mouvement** (ou le groupe musculaire) est « Cardio » passe en mode cardio :
+- **Programme** : durée (ex. `30`, `32:30`, `1h15`), distance (km), intensité libre (zone, allure, vitesse, % FC max…), **FC cible** (ex. `130-150`), RPE, nombre de blocs et récupération. Un bouton « Musculation / Cardio » permet de basculer pour n'importe quel exercice.
+- **Séance réalisée** : par bloc, durée, distance, intensité, **FC moyenne**, **FC max** et RPE, avec rappel du prévu et de la dernière fois.
+- **Progression** : durée totale, distance totale, FC moyenne et allure (min/km), records et comparaison de deux séances.
+- **PDF** : les objectifs cardio apparaissent sur la ligne de l'exercice.
+
+Activation : exécutez `supabase/migrations/20261014000004_cardio.sql` dans Supabase › SQL Editor, puis cliquez sur **Bibliothèque de base** dans la bibliothèque d'exercices pour ajouter les exercices cardio (course, vélo, rameur, elliptique, SkiErg…). Un modèle de programme **Cardio / Endurance** est disponible.
+

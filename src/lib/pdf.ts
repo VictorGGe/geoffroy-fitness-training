@@ -16,6 +16,8 @@ import {
   LEVEL_LABELS,
   num,
   SET_TYPE_LABELS,
+  cardioSummary,
+  isCardioExercise,
 } from "./format";
 import type { Program, ProgramSession } from "./types";
 import type { WeightData } from "@/components/WeightTracker";
@@ -267,7 +269,36 @@ export async function exportProgramPdf(program: Program, sessions: ProgramSessio
       const rpe = num(pe.rpe) !== null ? t(fmtNum(pe.rpe)) : "-";
       const rir = pe.rir != null ? String(pe.rir) : "-";
       const rest = pe.rest_seconds != null ? t(fmtRest(pe.rest_seconds)) : "-";
-      if (mobile) {
+      const cardioParts = cardioSummary(pe);
+      const isCardio = cardioParts.length > 0 || isCardioExercise(pe.exercises);
+      if (isCardio) {
+        const summary = t(
+          [
+            pe.sets && pe.sets > 1 ? `${pe.sets} blocs` : null,
+            ...cardioParts,
+            num(pe.rpe) !== null ? `RPE ${fmtNum(pe.rpe)}` : null,
+          ]
+            .filter(Boolean)
+            .join("  -  ") || "-",
+        );
+        if (mobile) {
+          body.push([
+            { content: `${i + 1}. ${name}\n${summary}`, styles: { fontStyle: "bold" } },
+            "-",
+            rpe,
+            rest,
+          ]);
+        } else {
+          body.push([
+            { content: String(i + 1), styles: { textColor: GREY } },
+            { content: `${name}${type}`, styles: { fontStyle: "bold" } },
+            pe.sets != null ? String(pe.sets) : "-",
+            { content: summary, colSpan: 4, styles: { halign: "center", textColor: ROYAL_DARK } },
+            rest,
+            "-",
+          ]);
+        }
+      } else if (mobile) {
         body.push([
           { content: `${i + 1}. ${name}${type}\n${pe.sets ?? "-"} x ${t(pe.reps) || "-"}${pe.tempo ? `  - tempo ${t(pe.tempo)}` : ""}`, styles: { fontStyle: "bold" } },
           load,

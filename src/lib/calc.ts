@@ -170,6 +170,13 @@ export interface ExerciseSessionPoint {
   volume: number;
   best1RM: number | null;
   sets: WorkoutSet[];
+  /** Cardio */
+  cardio: boolean;
+  totalDuration: number | null; // minutes
+  totalDistance: number | null; // km
+  avgHr: number | null; // bpm (moyenne pondérée par la durée si disponible)
+  maxHr: number | null;
+  pace: number | null; // min/km
 }
 
 /** Agrège les séries d'un exercice par séance (charge max, volume, 1RM estimé). */
@@ -191,6 +198,12 @@ export function aggregateExercise(
         volume: 0,
         best1RM: null,
         sets: [],
+        cardio: false,
+        totalDuration: null,
+        totalDistance: null,
+        avgHr: null,
+        maxHr: null,
+        pace: null,
       };
       byLog.set(s.workout_log_id, p);
     }
@@ -205,6 +218,24 @@ export function aggregateExercise(
     }
     const e = estimate1RM(load, reps);
     if (e !== null && (p.best1RM === null || e > p.best1RM)) p.best1RM = e;
+
+    const dur = s.duration_seconds ?? null;
+    const dist = num(s.distance_km);
+    const hrMax = s.hr_max ?? null;
+    if (dur !== null || dist !== null || s.hr_avg != null || hrMax !== null) p.cardio = true;
+    if (dur !== null) p.totalDuration = round1((p.totalDuration ?? 0) + dur / 60);
+    if (dist !== null) p.totalDistance = Math.round(((p.totalDistance ?? 0) + dist) * 100) / 100;
+    if (hrMax !== null && (p.maxHr === null || hrMax > p.maxHr)) p.maxHr = hrMax;
+  }
+  // FC moyenne (pondérée par la durée quand elle est connue) et allure
+  for (const p of byLog.values()) {
+    const withHr = p.sets.filter((x) => x.hr_avg != null);
+    if (withHr.length) {
+      const weights = withHr.map((x) => x.duration_seconds ?? 1);
+      const total = weights.reduce((a, b) => a + b, 0);
+      p.avgHr = Math.round(withHr.reduce((acc, x, i) => acc + (x.hr_avg as number) * weights[i], 0) / total);
+    }
+    if (p.totalDuration && p.totalDistance) p.pace = Math.round((p.totalDuration / p.totalDistance) * 100) / 100;
   }
   return [...byLog.values()].sort((a, b) => a.date.localeCompare(b.date));
 }

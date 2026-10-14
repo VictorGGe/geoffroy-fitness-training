@@ -9,7 +9,7 @@ import { getSupabase } from "@/lib/supabase/client";
 import { usePaths } from "@/lib/mode";
 import { unwrap, useAsync } from "@/lib/hooks";
 import { aggregateExercise, estimate1RM, type ExerciseSessionPoint } from "@/lib/calc";
-import { fmtDate, fmtDateLong, fmtNum, num, SET_TYPE_LABELS } from "@/lib/format";
+import { fmtDate, fmtDateLong, fmtDuration, fmtHrRange, fmtNum, num, SET_TYPE_LABELS } from "@/lib/format";
 import type { WorkoutLog, WorkoutSet } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -139,7 +139,61 @@ function groupByExercise(sets: WorkoutSet[]) {
 }
 
 /** Tableau des séries : prévu (bleu) vs réalisé (blanc). */
+const isCardioSet = (s: WorkoutSet) =>
+  s.duration_seconds != null || s.distance_km != null || s.hr_avg != null || s.hr_max != null || !!s.intensity || s.planned_duration_seconds != null;
+
+function CardioSetsTable({ sets }: { sets: WorkoutSet[] }) {
+  const p = sets[0];
+  const plan = [
+    p.planned_duration_seconds != null ? fmtDuration(p.planned_duration_seconds) : null,
+    p.planned_distance_km != null ? `${fmtNum(p.planned_distance_km, 2)} km` : null,
+    p.planned_intensity,
+    fmtHrRange(p.planned_hr_min, p.planned_hr_max) ? `FC ${fmtHrRange(p.planned_hr_min, p.planned_hr_max)}` : null,
+  ].filter(Boolean);
+  return (
+    <div className="overflow-x-auto">
+      {plan.length > 0 && <p className="mb-1 text-xs text-royal-300">Prévu : {plan.join(" · ")}</p>}
+      <table className="w-full min-w-[460px] text-sm">
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wider text-ink-500">
+            <th className="py-1 text-left font-medium">Bloc</th>
+            <th className="py-1 text-left font-medium">Durée</th>
+            <th className="py-1 text-left font-medium">Distance</th>
+            <th className="py-1 text-left font-medium">Intensité</th>
+            <th className="py-1 text-left font-medium">FC moy.</th>
+            <th className="py-1 text-left font-medium">FC max</th>
+            <th className="py-1 text-left font-medium">RPE</th>
+          </tr>
+        </thead>
+        <tbody className="tabular-nums">
+          {sets.map((s) => (
+            <tr key={s.id} className="border-t border-ink-750">
+              <td className="py-1.5">{s.set_number}</td>
+              <td className="py-1.5 font-medium text-white">{s.duration_seconds != null ? fmtDuration(s.duration_seconds) : "—"}</td>
+              <td className="py-1.5">{s.distance_km != null ? `${fmtNum(s.distance_km, 2)} km` : "—"}</td>
+              <td className="py-1.5">{s.intensity ?? "—"}</td>
+              <td className="py-1.5">{s.hr_avg != null ? `${s.hr_avg} bpm` : "—"}</td>
+              <td className="py-1.5">{s.hr_max != null ? `${s.hr_max} bpm` : "—"}</td>
+              <td className="py-1.5">{s.rpe != null ? fmtNum(s.rpe) : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {sets.some((s) => s.comment) && (
+        <ul className="mt-1 space-y-0.5 text-xs italic text-ink-400">
+          {sets.filter((s) => s.comment).map((s) => (
+            <li key={s.id}>
+              Bloc {s.set_number} : {s.comment}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function SetsTable({ sets }: { sets: WorkoutSet[] }) {
+  if (sets.some(isCardioSet)) return <CardioSetsTable sets={sets} />;
   const planned = sets[0];
   const hasPlan = planned && (planned.planned_reps || planned.planned_load_kg != null || planned.planned_rpe != null || planned.planned_rir != null);
   return (
@@ -200,12 +254,18 @@ export function SetsTable({ sets }: { sets: WorkoutSet[] }) {
 /* ------------------------------------------------------------------ */
 
 type SetWithLog = WorkoutSet & { workout_logs: { performed_on: string } | null };
-type Metric = "topLoad" | "best1RM" | "volume" | "totalReps";
+type Metric = "topLoad" | "best1RM" | "volume" | "totalReps" | "totalDuration" | "totalDistance" | "avgHr" | "pace";
 const METRICS: { key: Metric; label: string; unit: string }[] = [
   { key: "topLoad", label: "Charge maximale", unit: "kg" },
   { key: "best1RM", label: "1RM estimé", unit: "kg" },
   { key: "volume", label: "Volume (charge × reps)", unit: "kg" },
   { key: "totalReps", label: "Répétitions totales", unit: "reps" },
+];
+const CARDIO_METRICS: { key: Metric; label: string; unit: string }[] = [
+  { key: "totalDuration", label: "Durée totale", unit: "min" },
+  { key: "totalDistance", label: "Distance totale", unit: "km" },
+  { key: "avgHr", label: "FC moyenne", unit: "bpm" },
+  { key: "pace", label: "Allure moyenne", unit: "min/km" },
 ];
 
 export function ProgressionPanel({ clientId }: { clientId: string }) {
@@ -259,11 +319,17 @@ export function ProgressionPanel({ clientId }: { clientId: string }) {
   const group = groups.find((g) => g.key === selected) ?? groups[0];
   const points = group.points;
   const last = points[points.length - 1];
+  const isCardio = points.some((p) => p.cardio);
+  const metrics = isCardio ? CARDIO_METRICS : METRICS;
+  const activeMetric = metrics.some((x) => x.key === metric) ? metric : metrics[0].key;
   const bestLoad = maxBy(points, (p) => p.topLoad);
   const best1RM = maxBy(points, (p) => p.best1RM);
   const bestVolume = maxBy(points, (p) => p.volume || null);
-  const m = METRICS.find((x) => x.key === metric)!;
-  const chartData = points.map((p) => ({ date: p.date, value: p[metric] === 0 && metric !== "totalReps" ? null : p[metric] }));
+  const m = metrics.find((x) => x.key === activeMetric)!;
+  const chartData = points.map((p) => ({ date: p.date, value: p[activeMetric] === 0 && activeMetric !== "totalReps" ? null : p[activeMetric] }));
+  const longest = maxBy(points, (p) => p.totalDuration);
+  const farthest = maxBy(points, (p) => p.totalDistance);
+  const bestPace = maxBy(points, (p) => (p.pace ? -p.pace : null));
   const pa = points.find((p) => p.logId === cmpA);
   const pb = points.find((p) => p.logId === cmpB);
 
@@ -285,8 +351,8 @@ export function ProgressionPanel({ clientId }: { clientId: string }) {
             </option>
           ))}
         </Select>
-        <Select value={metric} onChange={(e) => setMetric(e.target.value as Metric)} aria-label="Indicateur">
-          {METRICS.map((x) => (
+        <Select value={activeMetric} onChange={(e) => setMetric(e.target.value as Metric)} aria-label="Indicateur">
+          {metrics.map((x) => (
             <option key={x.key} value={x.key}>
               {x.label}
             </option>
@@ -294,6 +360,38 @@ export function ProgressionPanel({ clientId }: { clientId: string }) {
         </Select>
       </div>
 
+      {isCardio ? (
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard
+          label="Dernière séance"
+          value={last.totalDuration != null ? fmtDuration(Math.round(last.totalDuration * 60)) : last.totalDistance != null ? `${fmtNum(last.totalDistance, 2)} km` : "—"}
+          hint={[
+            fmtDate(last.date),
+            last.totalDistance != null && last.totalDuration != null ? `${fmtNum(last.totalDistance, 2)} km` : null,
+            last.avgHr != null ? `FC moy. ${last.avgHr} bpm` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          accent
+        />
+        <StatCard
+          label="Plus longue durée"
+          value={longest?.totalDuration != null ? fmtDuration(Math.round(longest.totalDuration * 60)) : "—"}
+          hint={longest ? fmtDate(longest.date) : undefined}
+          icon={<Trophy className="h-4 w-4" />}
+        />
+        <StatCard
+          label="Plus longue distance"
+          value={farthest?.totalDistance != null ? `${fmtNum(farthest.totalDistance, 2)} km` : "—"}
+          hint={farthest ? fmtDate(farthest.date) : "Distance non renseignée"}
+        />
+        <StatCard
+          label="Meilleure allure"
+          value={bestPace?.pace != null ? `${fmtDuration(Math.round(bestPace.pace * 60))} /km` : "—"}
+          hint={bestPace ? fmtDate(bestPace.date) : "Durée + distance requises"}
+        />
+      </div>
+      ) : (
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="Dernière performance"
@@ -318,10 +416,18 @@ export function ProgressionPanel({ clientId }: { clientId: string }) {
           hint={bestVolume ? fmtDate(bestVolume.date) : undefined}
         />
       </div>
+      )}
 
       <Card title={`${group.name} — ${m.label}`}>
         <TimeChart data={chartData} series={[{ key: "value", label: m.label, color: "#4A6CF7" }]} unit={m.unit} />
-        <p className="mt-2 text-xs text-ink-500">Séries d&apos;échauffement exclues. Chaque point correspond à une séance réellement enregistrée.</p>
+        <p className="mt-2 text-xs text-ink-500">
+          {isCardio
+            ? activeMetric === "pace"
+              ? "Allure = durée ÷ distance (plus la valeur est basse, plus c'est rapide). "
+              : ""
+            : "Séries d'échauffement exclues. "}
+          Chaque point correspond à une séance réellement enregistrée.
+        </p>
       </Card>
 
       {points.length > 1 && (
@@ -353,10 +459,21 @@ export function ProgressionPanel({ clientId }: { clientId: string }) {
                 </div>
               ))}
               <div className="md:col-span-2">
-                <CompareRow label="Charge max" a={pa.topLoad} b={pb.topLoad} unit="kg" />
-                <CompareRow label="1RM estimé" a={pa.best1RM} b={pb.best1RM} unit="kg" />
-                <CompareRow label="Volume" a={pa.volume} b={pb.volume} unit="kg" />
-                <CompareRow label="Répétitions totales" a={pa.totalReps} b={pb.totalReps} unit="" />
+                {isCardio ? (
+                  <>
+                    <CompareRow label="Durée totale" a={pa.totalDuration} b={pb.totalDuration} unit="min" />
+                    <CompareRow label="Distance totale" a={pa.totalDistance} b={pb.totalDistance} unit="km" />
+                    <CompareRow label="FC moyenne" a={pa.avgHr} b={pb.avgHr} unit="bpm" lowerIsBetter />
+                    <CompareRow label="Allure moyenne" a={pa.pace} b={pb.pace} unit="min/km" lowerIsBetter />
+                  </>
+                ) : (
+                  <>
+                    <CompareRow label="Charge max" a={pa.topLoad} b={pb.topLoad} unit="kg" />
+                    <CompareRow label="1RM estimé" a={pa.best1RM} b={pb.best1RM} unit="kg" />
+                    <CompareRow label="Volume" a={pa.volume} b={pb.volume} unit="kg" />
+                    <CompareRow label="Répétitions totales" a={pa.totalReps} b={pb.totalReps} unit="" />
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -366,6 +483,40 @@ export function ProgressionPanel({ clientId }: { clientId: string }) {
       <Card title="Toutes les séances" padded={false}>
         <div className="overflow-x-auto">
           <table className="table-base">
+            {isCardio ? (
+              <>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Durée</th>
+                    <th>Distance</th>
+                    <th>Allure</th>
+                    <th>FC moy. / max</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...points].reverse().map((p) => (
+                    <tr key={p.logId}>
+                      <td className="whitespace-nowrap">
+                        <Link href={paths.session(p.logId)} className="text-royal-300 hover:text-royal-200">
+                          {fmtDate(p.date)}
+                        </Link>
+                      </td>
+                      <td className="whitespace-nowrap tabular-nums font-medium text-white">
+                        {p.totalDuration != null ? fmtDuration(Math.round(p.totalDuration * 60)) : "—"}
+                        {p === longest && points.length > 1 && <Badge tone="green" className="ml-2">Record</Badge>}
+                      </td>
+                      <td className="whitespace-nowrap tabular-nums">{p.totalDistance != null ? `${fmtNum(p.totalDistance, 2)} km` : "—"}</td>
+                      <td className="whitespace-nowrap tabular-nums">{p.pace != null ? `${fmtDuration(Math.round(p.pace * 60))} /km` : "—"}</td>
+                      <td className="whitespace-nowrap tabular-nums">
+                        {p.avgHr != null ? `${p.avgHr}` : "—"} / {p.maxHr != null ? `${p.maxHr} bpm` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </>
+            ) : (
+            <>
             <thead>
               <tr>
                 <th>Date</th>
@@ -395,6 +546,8 @@ export function ProgressionPanel({ clientId }: { clientId: string }) {
                 </tr>
               ))}
             </tbody>
+            </>
+            )}
           </table>
         </div>
       </Card>
@@ -402,15 +555,28 @@ export function ProgressionPanel({ clientId }: { clientId: string }) {
   );
 }
 
-function CompareRow({ label, a, b, unit }: { label: string; a: number | null; b: number | null; unit: string }) {
+function CompareRow({
+  label,
+  a,
+  b,
+  unit,
+  lowerIsBetter = false,
+}: {
+  label: string;
+  a: number | null;
+  b: number | null;
+  unit: string;
+  lowerIsBetter?: boolean;
+}) {
   const d = a !== null && b !== null ? Math.round((b - a) * 10) / 10 : null;
+  const good = d !== null && (lowerIsBetter ? d < 0 : d > 0);
   return (
     <div className="flex items-center justify-between border-b border-ink-750 py-2 text-sm last:border-0">
       <span className="text-ink-400">{label}</span>
       <span className="tabular-nums text-ink-200">
         {a !== null ? fmtNum(a) : "—"} → {b !== null ? fmtNum(b) : "—"} {unit}
         {d !== null && d !== 0 && (
-          <span className={cn("ml-2 font-semibold", d > 0 ? "text-emerald-400" : "text-amber-400")}>
+          <span className={cn("ml-2 font-semibold", good ? "text-emerald-400" : "text-amber-400")}>
             ({d > 0 ? "+" : "−"}
             {fmtNum(Math.abs(d))})
           </span>
