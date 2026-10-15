@@ -19,7 +19,8 @@ import {
   cardioSummary,
   isCardioExercise,
 } from "./format";
-import type { Program, ProgramSession } from "./types";
+import type { Client, Program, ProgramSession } from "./types";
+import { intakeSections, type Intake } from "./intake";
 import type { WeightData } from "@/components/WeightTracker";
 
 type RGB = [number, number, number];
@@ -703,5 +704,49 @@ export async function exportWeightPdf(data: WeightData, format: Format) {
 
   footers(L);
   doc.save(fileName("Bilan-poids", fullName(data.client), summary.lastDate ?? "", mobile ? "mobile" : "A4"));
+}
+
+/* ================================================================== */
+/* BILAN DE DÉPART                                                    */
+/* ================================================================== */
+
+export async function exportIntakePdf(client: Pick<Client, "first_name" | "last_name">, intake: Intake) {
+  const L = createDoc("a4");
+  const { doc, M, W } = L;
+  let y = header(L, "Bilan de départ client", await loadLogo());
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...INK);
+  doc.setFontSize(22);
+  doc.text(t(fullName(client)), M, y + 2);
+  y += 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...GREY);
+  doc.text(t(`Bilan réalisé le ${fmtDateLong(intake.assessed_on)}`), M, y);
+  y += 6;
+
+  for (const sec of intakeSections(intake.answers)) {
+    y = sectionTitle(L, y + 3, sec.title);
+    autoTable(doc, {
+      startY: y,
+      margin: { left: M, right: M, bottom: 16 },
+      body: sec.rows.map(([k, v]) => [t(k), t(v)]),
+      theme: "plain",
+      styles: { font: "helvetica", fontSize: 9.5, textColor: INK_SOFT, cellPadding: { top: 1.8, bottom: 1.8, left: 2, right: 2 }, lineColor: LINE, valign: "top" },
+      bodyStyles: { lineWidth: { bottom: 0.15 } },
+      columnStyles: { 0: { cellWidth: 68, textColor: GREY }, 1: { cellWidth: W - 2 * M - 68, fontStyle: "bold" } },
+    });
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 2;
+  }
+
+  y = ensure(L, y + 6, 10);
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...GREY);
+  doc.text(t("Document confidentiel : contient des informations de santé. À conserver de manière sécurisée."), M, y);
+
+  footers(L);
+  doc.save(fileName("Bilan-depart", fullName(client), intake.assessed_on));
 }
 

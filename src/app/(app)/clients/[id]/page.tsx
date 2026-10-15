@@ -39,6 +39,7 @@ import { ProgressionPanel, SessionHistory } from "@/components/TrainingPanels";
 import { WeightTracker } from "@/components/WeightTracker";
 import { MeasurementsPanel } from "@/components/MeasurementsPanel";
 import { ReviewsPanel } from "@/components/ReviewsPanel";
+import { IntakePanel } from "@/components/IntakePanel";
 import { useToast } from "@/components/toast";
 import { getSupabase } from "@/lib/supabase/client";
 import { unwrap, useAsync } from "@/lib/hooks";
@@ -161,7 +162,15 @@ function ClientDetail() {
         {tab === "progression" && <ProgressionPanel clientId={client.id} />}
         {tab === "poids" && <WeightTracker clientId={client.id} />}
         {tab === "mensurations" && <MeasurementsPanel clientId={client.id} />}
-        {tab === "bilans" && <ReviewsPanel clientId={client.id} />}
+        {tab === "bilans" && (
+          <div className="space-y-6">
+            <IntakePanel client={client} />
+            <div>
+              <h2 className="h-display mb-3 text-xl text-white">Bilans périodiques</h2>
+              <ReviewsPanel clientId={client.id} />
+            </div>
+          </div>
+        )}
       </div>
 
       <ClientForm open={editOpen} onClose={() => setEditOpen(false)} client={client} onSaved={() => reload()} />

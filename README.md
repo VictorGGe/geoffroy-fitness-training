@@ -393,3 +393,11 @@ Tout exercice dont le **type de mouvement** (ou le groupe musculaire) est « Car
 
 Activation : exécutez `supabase/migrations/20261014000004_cardio.sql` dans Supabase › SQL Editor, puis cliquez sur **Bibliothèque de base** dans la bibliothèque d'exercices pour ajouter les exercices cardio (course, vélo, rameur, elliptique, SkiErg…). Un modèle de programme **Cardio / Endurance** est disponible.
 
+
+---
+
+## 16. Bilan de départ
+
+Onglet **Bilans** de la fiche client › **Remplir le bilan de départ** : informations (âge, sexe), objectifs, état physique (taille, poids, IMC calculé), antécédents et santé, habitudes sportives, disponibilités et conclusion. Export PDF disponible. Réservé au coach : jamais visible dans l'espace client.
+
+Activation : exécutez `supabase/migrations/20261015000005_intake.sql` dans Supabase › SQL Editor.
