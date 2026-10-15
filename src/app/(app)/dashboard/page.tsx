@@ -137,7 +137,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-2">
+      <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card title="Programmes récemment modifiés" padded={false} actions={<Link href="/programs" className="text-xs text-royal-300 hover:text-royal-200">Tout voir</Link>}>
           {data.programs.length === 0 ? (
             <EmptyState title="Aucun programme" />
@@ -189,7 +189,7 @@ export default function DashboardPage() {
           {data.logs.length === 0 ? (
             <EmptyState title="Aucune séance enregistrée" text="Les séances saisies apparaîtront ici." />
           ) : (
-            <ul className="grid divide-y divide-ink-750 md:grid-cols-2 md:divide-y-0">
+            <ul className="grid grid-cols-1 divide-y divide-ink-750 md:grid-cols-2 md:divide-y-0">
               {data.logs.map((l) => (
                 <li key={l.id} className="md:border-b md:border-ink-750">
                   <Link href={`/sessions/${l.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-ink-800 sm:px-5">

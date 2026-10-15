@@ -137,3 +137,28 @@ export function intakeSections(a: IntakeAnswers): { title: string; rows: [string
     { title: "6. Conclusion du bilan", rows: [["Conclusion", txt(a.conclusion)]] },
   ];
 }
+
+/** Niveau sportif déduit du niveau de pratique déclaré (modifiable ensuite dans la fiche). */
+export function levelFromPractice(p: IntakeAnswers["practice_level"]): "debutant" | "intermediaire" | "avance" | null {
+  if (p === "aucune" || p === "occasionnelle") return "debutant";
+  if (p === "reguliere") return "intermediaire";
+  if (p === "intensive") return "avance";
+  return null;
+}
+
+/** Résumé santé pour le champ « Contraintes d'entraînement » de la fiche client. */
+export function constraintsFromIntake(a: IntakeAnswers): string | null {
+  const lines: string[] = [];
+  if (a.pathologies === "oui") lines.push(`Pathologies : ${a.pathologies_details?.trim() || "oui (à préciser)"}`);
+  if (a.injuries === "oui") lines.push(`Blessures : ${a.injuries_details?.trim() || "oui (à préciser)"}`);
+  if (a.treatment === "oui") lines.push(`Traitement en cours : ${a.treatment_details?.trim() || "oui (à préciser)"}`);
+  if (a.restrictions?.trim()) lines.push(`Restrictions : ${a.restrictions.trim()}`);
+  const dispo = [a.days?.length ? `jours : ${a.days.join(", ")}` : null, a.slots?.length ? `créneaux : ${a.slots.join(", ")}` : null, a.session_duration?.trim() ? `durée : ${a.session_duration.trim()}` : null].filter(Boolean);
+  if (dispo.length) lines.push(`Disponibilités — ${dispo.join(" ; ")}`);
+  return lines.length ? lines.join("\n") : null;
+}
+
+/** Objectif principal pour la fiche client. */
+export function goalFromIntake(a: IntakeAnswers): string | null {
+  return a.main_goal?.trim() || a.goals?.[0] || a.goal_other?.trim() || null;
+}

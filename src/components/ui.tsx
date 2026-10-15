@@ -196,9 +196,9 @@ export function Card({
   padded?: boolean;
 }) {
   return (
-    <section className={cn("card animate-fade-in", className)}>
+    <section className={cn("card min-w-0 animate-fade-in", className)}>
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-3 border-b border-ink-700/60 px-4 py-3 sm:px-5">
+        <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-ink-700/60 px-4 py-3 sm:px-5">
           <h2 className="h-display text-[17px] text-ink-100">{title}</h2>
           {actions && <div className="flex items-center gap-2">{actions}</div>}
         </header>

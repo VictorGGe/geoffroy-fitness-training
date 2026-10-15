@@ -3,15 +3,16 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Dumbbell, Euro, LayoutDashboard, ListChecks, LogOut, Scale, Search, Users } from "lucide-react";
+import { ClipboardCheck, Dumbbell, Euro, LayoutDashboard, ListChecks, LogOut, Scale, Search, Users } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "./ui";
 
 const NAV = [
   { href: "/dashboard", label: "Tableau de bord", short: "Accueil", icon: LayoutDashboard },
   { href: "/clients", label: "Mes clients", short: "Clients", icon: Users },
-  { href: "/programs", label: "Programmes", short: "Programmes", icon: ListChecks },
-  { href: "/exercises", label: "Bibliothèque d'exercices", short: "Exercices", icon: Dumbbell },
+  { href: "/bilans", label: "Bilan de départ", short: "Bilan", icon: ClipboardCheck },
+  { href: "/programs", label: "Programmes", short: "Prog.", icon: ListChecks },
+  { href: "/exercises", label: "Bibliothèque d'exercices", short: "Exos", icon: Dumbbell },
   { href: "/weight", label: "Suivi de perte de poids", short: "Poids", icon: Scale },
   { href: "/tarifs", label: "Grille tarifaire", short: "Tarifs", icon: Euro },
 ];
@@ -141,18 +142,18 @@ export function AppShell({ email, children }: { email: string; children: ReactNo
 
       {/* Navigation inférieure (mobile) */}
       <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-ink-800 bg-ink-900/95 backdrop-blur-md lg:hidden">
-        <div className="grid grid-cols-6">
+        <div className="grid grid-cols-7">
           {NAV.map(({ href, short, icon: Icon }) => (
             <Link
               key={href}
               href={href}
               className={cn(
-                "flex flex-col items-center gap-1 py-2.5 text-[10.5px] font-medium transition",
+                "flex min-w-0 flex-col items-center gap-1 px-0.5 py-2.5 text-[9.5px] font-medium tracking-tight transition",
                 isActive(href) ? "text-royal-400" : "text-ink-500",
               )}
             >
               <Icon className="h-5 w-5" />
-              {short}
+              <span className="max-w-full truncate">{short}</span>
             </Link>
           ))}
         </div>

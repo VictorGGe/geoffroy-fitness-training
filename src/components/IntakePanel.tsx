@@ -79,40 +79,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 /* ------------------------------------------------------------------ */
-/* Formulaire                                                          */
+/* Champs du questionnaire (réutilisés par la fiche client et l'onglet Bilan) */
 /* ------------------------------------------------------------------ */
 
-function IntakeForm({
-  open,
-  onClose,
-  client,
-  intake,
-  onSaved,
+export function IntakeFields({
+  answers: a,
+  onChange: setA,
+  date,
+  onDate: setDate,
+  header,
 }: {
-  open: boolean;
-  onClose: () => void;
-  client: Client;
-  intake: Intake | null;
-  onSaved: () => void;
+  answers: IntakeAnswers;
+  onChange: React.Dispatch<React.SetStateAction<IntakeAnswers>>;
+  date: string;
+  onDate: (v: string) => void;
+  header?: React.ReactNode;
 }) {
-  const toast = useToast();
-  const [date, setDate] = useState(todayISO());
-  const [a, setA] = useState<IntakeAnswers>({});
-  const [saving, setSaving] = useState(false);
-  const [wasOpen, setWasOpen] = useState(false);
-
-  if (open && !wasOpen) {
-    setWasOpen(true);
-    setDate(intake?.assessed_on ?? todayISO());
-    setA(
-      intake?.answers ?? {
-        main_goal: client.goal ?? "",
-        wished_frequency: client.sessions_per_week != null ? String(client.sessions_per_week) : "",
-      },
-    );
-  }
-  if (!open && wasOpen) setWasOpen(false);
-
   const set = <K extends keyof IntakeAnswers>(k: K, v: IntakeAnswers[K]) => setA((x) => ({ ...x, [k]: v }));
   const toggle = (k: "goals" | "days" | "slots", v: string) =>
     setA((x) => {
@@ -120,47 +102,10 @@ function IntakeForm({
       return { ...x, [k]: cur.includes(v) ? cur.filter((y) => y !== v) : [...cur, v] };
     });
   const imc = bmi(a);
-
-  async function save() {
-    if (!date) return toast.error("Indiquez la date du bilan.");
-    setSaving(true);
-    const sb = getSupabase();
-    const payload = { assessed_on: date, answers: a };
-    const res = intake
-      ? await sb.from("client_intakes").update(payload).eq("id", intake.id)
-      : await sb.from("client_intakes").insert({ ...payload, client_id: client.id });
-    setSaving(false);
-    if (res.error) {
-      return toast.error(
-        /client_intakes/.test(res.error.message)
-          ? "Fonction non activée : exécutez le fichier SQL 20261015000005_intake.sql dans Supabase."
-          : errorMessage(res.error),
-      );
-    }
-    toast.success("Bilan de départ enregistré.");
-    onSaved();
-    onClose();
-  }
-
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      size="xl"
-      title={`Bilan de départ — ${client.first_name} ${client.last_name}`}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button onClick={save} loading={saving}>
-            Enregistrer le bilan
-          </Button>
-        </>
-      }
-    >
       <div className="space-y-5">
         <Section title="Informations client">
+          {header}
           <Field label="Date du bilan">
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
@@ -304,6 +249,83 @@ function IntakeForm({
           </Field>
         </Section>
       </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Formulaire                                                          */
+/* ------------------------------------------------------------------ */
+
+function IntakeForm({
+  open,
+  onClose,
+  client,
+  intake,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  client: Client;
+  intake: Intake | null;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const [date, setDate] = useState(todayISO());
+  const [a, setA] = useState<IntakeAnswers>({});
+  const [saving, setSaving] = useState(false);
+  const [wasOpen, setWasOpen] = useState(false);
+
+  if (open && !wasOpen) {
+    setWasOpen(true);
+    setDate(intake?.assessed_on ?? todayISO());
+    setA(
+      intake?.answers ?? {
+        main_goal: client.goal ?? "",
+        wished_frequency: client.sessions_per_week != null ? String(client.sessions_per_week) : "",
+      },
+    );
+  }
+  if (!open && wasOpen) setWasOpen(false);
+
+  async function save() {
+    if (!date) return toast.error("Indiquez la date du bilan.");
+    setSaving(true);
+    const sb = getSupabase();
+    const payload = { assessed_on: date, answers: a };
+    const res = intake
+      ? await sb.from("client_intakes").update(payload).eq("id", intake.id)
+      : await sb.from("client_intakes").insert({ ...payload, client_id: client.id });
+    setSaving(false);
+    if (res.error) {
+      return toast.error(
+        /client_intakes/.test(res.error.message)
+          ? "Fonction non activée : exécutez le fichier SQL 20261015000005_intake.sql dans Supabase."
+          : errorMessage(res.error),
+      );
+    }
+    toast.success("Bilan de départ enregistré.");
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="xl"
+      title={`Bilan de départ — ${client.first_name} ${client.last_name}`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button onClick={save} loading={saving}>
+            Enregistrer le bilan
+          </Button>
+        </>
+      }
+    >
+      <IntakeFields answers={a} onChange={setA} date={date} onDate={setDate} />
     </Modal>
   );
 }
