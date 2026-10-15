@@ -2,7 +2,7 @@
  * Lecture tolérante des variables Supabase : corrige les erreurs de copier-coller
  * fréquentes (espaces, guillemets, « NOM= » recopié dans la valeur, / final).
  */
-function clean(raw: string | undefined, name: string): string {
+export function clean(raw: string | undefined, name: string): string {
   const unquote = (x: string) => x.trim().replace(/^["']+|["']+$/g, "").trim();
   let v = unquote(raw ?? "");
   if (v.startsWith(name + "=")) v = unquote(v.slice(name.length + 1));
@@ -24,10 +24,3 @@ export const SUPABASE_KEY = clean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, "NE
 export const SUPABASE_CONFIG_OK =
   /^https?:\/\/[^\s/]+(:\d+)?$/.test(SUPABASE_URL) && SUPABASE_KEY.length > 20;
 
-/** Clé secrète Supabase (serveur uniquement) : sert à créer les comptes clients. */
-export function serviceRoleKey(): string {
-  return (
-    clean(process.env.SUPABASE_SERVICE_ROLE_KEY, "SUPABASE_SERVICE_ROLE_KEY") ||
-    clean(process.env.SUPABASE_SECRET_KEY, "SUPABASE_SECRET_KEY")
-  );
-}

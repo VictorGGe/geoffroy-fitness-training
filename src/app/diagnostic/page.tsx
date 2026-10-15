@@ -1,5 +1,6 @@
 import { AuthShell } from "@/components/AuthShell";
-import { SUPABASE_KEY, SUPABASE_URL, serviceRoleKey } from "@/lib/env";
+import { SUPABASE_KEY, SUPABASE_URL } from "@/lib/env";
+import { serviceRoleKeyInfo } from "@/lib/env-server";
 
 export const dynamic = "force-dynamic";
 
@@ -72,12 +73,22 @@ async function runChecks(): Promise<Check[]> {
     }
 
     // Accès clients (facultatif)
-    const secret = serviceRoleKey();
+    const info = serviceRoleKeyInfo();
+    const secret = info.key;
+    if (info.publicLeak.length) {
+      checks.push({
+        label: "Sécurité de la clé secrète",
+        ok: false,
+        detail: `DANGER : la clé secrète est dans ${info.publicLeak.join(", ")} (préfixe NEXT_PUBLIC_ = visible publiquement). Supprimez cette variable dans Vercel, créez une nouvelle clé secrète dans Supabase et mettez-la dans SUPABASE_SERVICE_ROLE_KEY.`,
+      });
+    }
     if (!secret) {
       checks.push({
         label: "Accès clients (SUPABASE_SERVICE_ROLE_KEY)",
         ok: false,
-        detail: "Non configuré — facultatif : nécessaire uniquement pour créer des accès à vos clients.",
+        detail:
+          "Non configuré — la variable n'est pas reçue par le site. Vérifiez dans Vercel : nom exact SUPABASE_SERVICE_ROLE_KEY, environnement « Production » coché, puis « Redeploy »." +
+          (info.related.length ? ` Variables trouvées : ${info.related.join(", ")}.` : ""),
       });
     } else {
       try {
@@ -90,7 +101,7 @@ async function runChecks(): Promise<Check[]> {
           label: "Accès clients (SUPABASE_SERVICE_ROLE_KEY)",
           ok: res.ok,
           detail: res.ok
-            ? "Clé secrète valide et table des accès présente."
+            ? `Clé secrète valide et table des accès présente${info.name && info.name !== "SUPABASE_SERVICE_ROLE_KEY" ? ` (lue dans ${info.name})` : ""}.`
             : /client_accounts|does not exist|schema cache/i.test(txt)
               ? "Clé valide, mais exécutez le fichier SQL 20261013000003_client_accounts.sql dans Supabase."
               : `Clé refusée (code ${res.status}) : vérifiez que c'est bien la clé secrète / service_role.`,

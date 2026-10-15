@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServer } from "@/lib/supabase/server";
-import { SUPABASE_URL, serviceRoleKey } from "@/lib/env";
+import { SUPABASE_URL } from "@/lib/env";
+import { serviceRoleKey } from "@/lib/env-server";
 
 export const dynamic = "force-dynamic";
 
