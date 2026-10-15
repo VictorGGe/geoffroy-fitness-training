@@ -7,6 +7,7 @@ import { ArrowDown, ArrowLeft, ArrowUp, History, Plus, Target, Timer, Trash2, X 
 import { RestTimer, unlockAudio, type RestRequest } from "./RestTimer";
 import { Badge, Button, Card, ConfirmDialog, Field, Input, LoadingBlock, PageHeader, Select, Textarea, cn } from "./ui";
 import { ExercisePicker } from "./ExercisePicker";
+import { VideoThumb } from "./ExerciseVideo";
 import { useToast } from "./toast";
 import { getSupabase } from "@/lib/supabase/client";
 import { fetchProgramFull, getMyClientProfile } from "@/lib/data";
@@ -65,6 +66,7 @@ interface Block {
   exercise_id: string | null;
   exercise_name: string;
   cardio: boolean;
+  video_url?: string | null;
   planned: Planned | null;
   sets: SetRow[];
 }
@@ -269,6 +271,7 @@ export function WorkoutEditor({
         key: uid(),
         exercise_id: pe.exercise_id,
         exercise_name: pe.exercises?.name ?? "Exercice",
+        video_url: pe.exercises?.video_url ?? null,
         cardio: isCardioExercise(pe.exercises) || pe.duration_seconds != null || num(pe.distance_km) !== null || pe.hr_min != null,
         planned: {
           sets: pe.sets,
@@ -291,6 +294,21 @@ export function WorkoutEditor({
       })),
     );
   }, [sessionId, programSessions, editing]);
+
+  // Vidéos des exercices (pour les séances déjà enregistrées)
+  const [videos, setVideos] = useState<Record<string, string | null>>({});
+  const idsKey = blocks.map((b) => b.exercise_id).filter(Boolean).join(",");
+  useEffect(() => {
+    const ids = [...new Set(blocks.filter((b) => b.exercise_id && b.video_url === undefined).map((b) => b.exercise_id as string))];
+    if (!ids.length) return;
+    sb.from("exercises")
+      .select("id, video_url")
+      .in("id", ids)
+      .then(({ data }) => {
+        if (data) setVideos((v) => ({ ...v, ...Object.fromEntries((data as { id: string; video_url: string | null }[]).map((x) => [x.id, x.video_url])) }));
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey]);
 
   // Dernières performances du client pour chaque exercice
   const exerciseIds = useMemo(() => [...new Set(blocks.map((b) => b.exercise_id).filter(Boolean) as string[])], [blocks]);
@@ -561,7 +579,8 @@ export function WorkoutEditor({
           const last = b.exercise_id ? lastPerf[b.exercise_id] : undefined;
           return (
             <section key={b.key} className="card overflow-hidden animate-fade-in">
-              <header className="flex items-start gap-2 border-b border-ink-700/60 bg-ink-800/60 px-4 py-3">
+              <header className="flex items-start gap-3 border-b border-ink-700/60 bg-ink-800/60 px-4 py-3">
+                <VideoThumb url={b.video_url ?? (b.exercise_id ? videos[b.exercise_id] : null)} title={b.exercise_name} />
                 <div className="min-w-0 flex-1">
                   <p className="font-display text-lg font-semibold uppercase tracking-wide text-white">
                     <span className="mr-2 text-royal-400">{bi + 1}.</span>
@@ -885,6 +904,7 @@ export function WorkoutEditor({
                 key: uid(),
                 exercise_id: e.id,
                 exercise_name: e.name,
+                video_url: e.video_url,
                 cardio,
                 planned: null,
                 sets: cardio ? [emptySet()] : [emptySet(), emptySet(), emptySet()],

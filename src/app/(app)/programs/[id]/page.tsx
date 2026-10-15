@@ -58,6 +58,7 @@ import {
 import { useToast } from "@/components/toast";
 import { ProgramForm } from "@/components/ProgramForm";
 import { ExercisePicker } from "@/components/ExercisePicker";
+import { VideoThumb } from "@/components/ExerciseVideo";
 import { getSupabase } from "@/lib/supabase/client";
 import { copySession, duplicateProgram, fetchProgramFull } from "@/lib/data";
 import { useAsync } from "@/lib/hooks";
@@ -599,6 +600,7 @@ function SortableExerciseRow({
         >
           <GripVertical className="h-4 w-4" />
         </button>
+        <VideoThumb url={pe.exercises?.video_url} title={pe.exercises?.name ?? "Exercice"} />
         <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setEditing((v) => !v)}>
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold tabular-nums text-ink-500">{index + 1}.</span>

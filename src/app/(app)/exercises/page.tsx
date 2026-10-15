@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Dumbbell, ExternalLink, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Download, Dumbbell, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import {
   Badge,
   Button,
@@ -16,6 +16,7 @@ import {
   Select,
 } from "@/components/ui";
 import { ExerciseForm } from "@/components/ExerciseForm";
+import { InlineVideo } from "@/components/ExerciseVideo";
 import { useToast } from "@/components/toast";
 import { getSupabase } from "@/lib/supabase/client";
 import { importStarterLibrary } from "@/lib/data";
@@ -206,16 +207,7 @@ export default function ExercisesPage() {
                 </div>
               ) : null,
             )}
-            {viewing.video_url && (
-              <a
-                href={viewing.video_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-royal-300 hover:text-royal-200"
-              >
-                <ExternalLink className="h-4 w-4" /> Voir la vidéo de démonstration
-              </a>
-            )}
+            {viewing.video_url && <InlineVideo url={viewing.video_url} title={viewing.name} />}
             {!viewing.description && !viewing.execution_cues && !viewing.common_mistakes && !viewing.variations && !viewing.notes && (
               <p className="text-sm text-ink-400">Aucun détail technique renseigné. Cliquez sur « Modifier » pour compléter la fiche.</p>
             )}
