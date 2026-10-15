@@ -20,13 +20,13 @@ const config: Config = {
           100: "#E7E9EE",
         },
         royal: {
-          300: "#9DB4FF",
-          400: "#7393FF",
-          500: "#4A6CF7",
-          600: "#2F55E4",
-          700: "#2443BD",
-          800: "#1D3591",
-          900: "#152660",
+          300: "#A9CDFF",
+          400: "#5CA2FF",
+          500: "#2884FB",
+          600: "#1A6FE6",
+          700: "#155BC0",
+          800: "#144A96",
+          900: "#123A70",
         },
       },
       fontFamily: {
@@ -35,7 +35,7 @@ const config: Config = {
       },
       boxShadow: {
         card: "0 1px 0 0 rgba(255,255,255,0.03) inset, 0 8px 24px -12px rgba(0,0,0,0.6)",
-        glow: "0 0 0 1px rgba(74,108,247,0.35), 0 8px 30px -8px rgba(47,85,228,0.45)",
+        glow: "0 0 0 1px rgba(40,132,251,0.35), 0 8px 30px -8px rgba(26,111,230,0.45)",
       },
       keyframes: {
         "fade-in": { from: { opacity: "0", transform: "translateY(4px)" }, to: { opacity: "1", transform: "none" } },

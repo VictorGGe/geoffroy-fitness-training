@@ -1,25 +1,21 @@
 import { cn } from "@/lib/cn";
 
+/** Logo Victor Training. « lg » : logo complet (connexion) ; « md » : emblème + nom (menus). */
 export function Logo({ size = "md", collapsed = false }: { size?: "md" | "lg"; collapsed?: boolean }) {
-  const big = size === "lg";
+  if (size === "lg") {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src="/logo-full.png" alt="Victor Training" width={900} height={830} className="h-auto w-[210px] select-none drop-shadow-[0_10px_40px_rgba(40,132,251,0.25)]" draggable={false} />
+    );
+  }
   return (
-    <div className="flex items-center gap-3">
-      <div
-        className={cn(
-          "relative flex items-center justify-center rounded-xl bg-gradient-to-br from-royal-500 to-royal-700 font-display font-bold text-white shadow-glow",
-          big ? "h-12 w-12 text-2xl" : "h-9 w-9 text-lg",
-        )}
-      >
-        GF
-      </div>
+    <div className="flex items-center gap-2.5">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/logo-mark.png" alt="" width={480} height={348} className="h-9 w-auto select-none" draggable={false} />
       {!collapsed && (
         <div className="leading-none">
-          <p className={cn("font-display font-bold uppercase tracking-[0.08em] text-white", big ? "text-2xl" : "text-[17px]")}>
-            Geoffroy
-          </p>
-          <p className={cn("font-display font-medium uppercase tracking-[0.22em] text-royal-400", big ? "mt-1 text-[13px]" : "mt-0.5 text-[10.5px]")}>
-            Fitness Training
-          </p>
+          <p className="font-display text-[19px] font-bold uppercase tracking-[0.14em] text-white">Victor</p>
+          <p className={cn("mt-0.5 font-display text-[10.5px] font-semibold uppercase tracking-[0.42em] text-royal-500")}>Training</p>
         </div>
       )}
     </div>

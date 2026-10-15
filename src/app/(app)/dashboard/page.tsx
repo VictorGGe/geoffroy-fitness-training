@@ -63,7 +63,7 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader
-        title={`${greeting} Geoffroy`}
+        title={`${greeting} Victor`}
         subtitle={new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
       />
 

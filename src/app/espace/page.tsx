@@ -32,7 +32,7 @@ export default function ClientHomePage() {
     <>
       <PageHeader
         title={data.me ? `Salut ${data.me.first_name}` : "Mon espace"}
-        subtitle="Ton programme d'entraînement, préparé par Geoffroy."
+        subtitle="Ton programme d'entraînement, préparé par Victor."
         actions={
           <LinkButton href="/espace/seances/nouvelle">
             <ClipboardPlus className="h-4 w-4" /> Noter une séance

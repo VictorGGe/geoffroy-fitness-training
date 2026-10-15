@@ -7,11 +7,12 @@ import "./globals.css";
 import { ToastProvider } from "@/components/toast";
 
 export const metadata: Metadata = {
-  title: { default: "Geoffroy Fitness Training", template: "%s · Geoffroy Fitness Training" },
+  title: { default: "Victor Training", template: "%s · Victor Training" },
   description: "Espace privé de coaching : clients, programmes, performances et suivi de poids.",
   robots: { index: false, follow: false },
-  icons: { icon: "/icon.svg", apple: "/icon.svg" },
-  appleWebApp: { capable: true, title: "GF Training", statusBarStyle: "black-translucent" },
+  icons: { icon: [{ url: "/favicon.ico", sizes: "any" }, { url: "/icon-192.png", type: "image/png" }], apple: "/apple-icon.png" },
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "Victor Training", statusBarStyle: "black-translucent" },
 };
 
 export const viewport: Viewport = {

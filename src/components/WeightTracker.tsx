@@ -232,7 +232,7 @@ export function WeightTracker({ clientId }: { clientId: string }) {
         <Card title="Évolution du poids">
           {chartData.length ? (
             <>
-              <TimeChart data={chartData} series={[{ key: "poids", label: "Poids", color: "#4A6CF7" }]} unit="kg" references={references} />
+              <TimeChart data={chartData} series={[{ key: "poids", label: "Poids", color: "#2884FB" }]} unit="kg" references={references} />
               <p className="mt-2 text-xs text-ink-500">Points bleus : pesées saisies. Lignes pointillées : objectifs (non des mesures).</p>
             </>
           ) : (

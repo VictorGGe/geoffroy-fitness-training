@@ -23,8 +23,8 @@ import type { Program, ProgramSession } from "./types";
 import type { WeightData } from "@/components/WeightTracker";
 
 type RGB = [number, number, number];
-const ROYAL: RGB = [47, 85, 228];
-const ROYAL_DARK: RGB = [29, 53, 145];
+const ROYAL: RGB = [26, 111, 230];
+const ROYAL_DARK: RGB = [20, 74, 150];
 const INK: RGB = [11, 13, 18];
 const INK_SOFT: RGB = [34, 40, 53];
 const GREY: RGB = [107, 116, 135];
@@ -67,7 +67,39 @@ function createDoc(format: Format): Layout {
   return { doc, W, H, M: mobile ? 7 : 16, mobile, fs: (n) => (mobile ? Math.max(7, n * 0.9) : n) };
 }
 
-function header(L: Layout, subtitle: string) {
+interface LogoImage {
+  data: string;
+  ratio: number; // largeur / hauteur
+}
+
+let logoCache: LogoImage | null | undefined;
+
+/** Charge l'emblème du logo (PNG transparent) pour l'en-tête des PDF. */
+async function loadLogo(): Promise<LogoImage | null> {
+  if (logoCache !== undefined) return logoCache;
+  try {
+    if (typeof window === "undefined") throw new Error("no browser");
+    const blob = await (await fetch("/logo-mark.png")).blob();
+    const data = await new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+    const ratio = await new Promise<number>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img.naturalWidth / img.naturalHeight || 1.38);
+      img.onerror = () => resolve(1.38);
+      img.src = data;
+    });
+    logoCache = { data, ratio };
+  } catch {
+    logoCache = null;
+  }
+  return logoCache;
+}
+
+function header(L: Layout, subtitle: string, logo: LogoImage | null) {
   const { doc, W, M, mobile } = L;
   const h = mobile ? 20 : 26;
   doc.setFillColor(...INK);
@@ -75,20 +107,28 @@ function header(L: Layout, subtitle: string) {
   doc.setFillColor(...ROYAL);
   doc.rect(0, h, W, 1.6, "F");
 
-  // Monogramme
-  const s = mobile ? 10 : 13;
-  doc.setFillColor(...ROYAL);
-  doc.roundedRect(M, (h - s) / 2, s, s, 2, 2, "F");
+  // Emblème du logo
+  const lh = mobile ? 12 : 16;
+  let s = lh;
+  if (logo) {
+    s = lh * logo.ratio;
+    doc.addImage(logo.data, "PNG", M, (h - lh) / 2, s, lh);
+  } else {
+    doc.setFillColor(...ROYAL);
+    doc.roundedRect(M, (h - lh) / 2, lh, lh, 2, 2, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(mobile ? 9 : 12);
+    doc.text("VT", M + lh / 2, h / 2 + (mobile ? 1.2 : 1.6), { align: "center" });
+  }
+
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(mobile ? 9 : 12);
-  doc.text("GF", M + s / 2, h / 2 + (mobile ? 1.2 : 1.6), { align: "center" });
-
-  doc.setFontSize(mobile ? 9.5 : 13);
-  doc.text("GEOFFROY FITNESS TRAINING", M + s + 4, h / 2 - (mobile ? 0.8 : 1));
+  doc.setFontSize(mobile ? 10.5 : 14);
+  doc.text("VICTOR TRAINING", M + s + 4, h / 2 - (mobile ? 0.8 : 1), { charSpace: 0.6 });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(mobile ? 7 : 8.5);
-  doc.setTextColor(157, 180, 255);
+  doc.setTextColor(169, 205, 255);
   doc.text(t(subtitle).toUpperCase(), M + s + 4, h / 2 + (mobile ? 3.2 : 4.2), { charSpace: 0.4 });
   return h + (mobile ? 7 : 10);
 }
@@ -104,7 +144,7 @@ function footers(L: Layout) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(L.fs(7.5));
     doc.setTextColor(...GREY);
-    doc.text(t(`Geoffroy Fitness Training - document personnel - ${fmtDate(new Date().toISOString())}`), M, H - 6);
+    doc.text(t(`Victor Training - document personnel - ${fmtDate(new Date().toISOString())}`), M, H - 6);
     doc.text(`${i} / ${n}`, W - M, H - 6, { align: "right" });
   }
 }
@@ -188,7 +228,7 @@ function fileName(...parts: string[]) {
 export async function exportProgramPdf(program: Program, sessions: ProgramSession[], format: Format) {
   const L = createDoc(format);
   const { doc, M, W, mobile } = L;
-  let y = header(L, "Programme d'entraînement");
+  let y = header(L, "Programme d'entraînement", await loadLogo());
 
   // Titre
   doc.setFont("helvetica", "bold");
@@ -497,7 +537,7 @@ export async function exportWeightPdf(data: WeightData, format: Format) {
   const { doc, M, W, mobile } = L;
   const summary = weightSummary(data.weighIns, data.goal);
   const sorted = sortWeighIns(data.weighIns);
-  let y = header(L, "Bilan de suivi du poids");
+  let y = header(L, "Bilan de suivi du poids", await loadLogo());
 
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...INK);
@@ -528,7 +568,7 @@ export async function exportWeightPdf(data: WeightData, format: Format) {
     doc.roundedRect(cx, cy, bw, bh, 2, 2, "F");
     doc.setFont("helvetica", "normal");
     doc.setFontSize(L.fs(7));
-    doc.setTextColor(...(accent ? ([210, 222, 255] as RGB) : GREY));
+    doc.setTextColor(...(accent ? ([214, 232, 255] as RGB) : GREY));
     doc.text(t(k).toUpperCase(), cx + 3, cy + 4.8, { charSpace: 0.3 });
     doc.setFont("helvetica", "bold");
     doc.setFontSize(mobile ? 12 : 15);

@@ -14,7 +14,7 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
           {subtitle && <p className="mt-1 text-sm text-ink-400">{subtitle}</p>}
           <div className="mt-6">{children}</div>
         </div>
-        <p className="mt-6 text-center text-xs text-ink-500">Espace privé — accès réservé au coach.</p>
+        <p className="mt-6 text-center text-xs text-ink-500">Espace privé — accès réservé au coach et à ses clients.</p>
       </div>
     </main>
   );

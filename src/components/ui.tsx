@@ -17,7 +17,7 @@ type Size = "sm" | "md" | "lg" | "icon";
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-royal-600 text-white hover:bg-royal-500 active:bg-royal-700 shadow-[0_6px_20px_-8px_rgba(47,85,228,0.8)]",
+    "bg-royal-600 text-white hover:bg-royal-500 active:bg-royal-700 shadow-[0_6px_20px_-8px_rgba(26,111,230,0.8)]",
   secondary: "bg-ink-750 text-ink-100 hover:bg-ink-700 border border-ink-600/60",
   outline: "border border-ink-600 text-ink-200 hover:border-royal-500 hover:text-white",
   ghost: "text-ink-300 hover:bg-ink-750 hover:text-white",
@@ -338,7 +338,7 @@ export function Tabs<T extends string>({
             className={cn(
               "flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-medium transition",
               value === t.key
-                ? "bg-royal-600 text-white shadow-[0_4px_14px_-6px_rgba(47,85,228,0.9)]"
+                ? "bg-royal-600 text-white shadow-[0_4px_14px_-6px_rgba(26,111,230,0.9)]"
                 : "text-ink-400 hover:bg-ink-800 hover:text-ink-100",
             )}
           >

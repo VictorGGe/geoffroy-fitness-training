@@ -13,8 +13,8 @@
   body {
     @apply bg-ink-950 text-ink-100 font-sans antialiased;
     background-image:
-      radial-gradient(1200px 600px at 100% -10%, rgba(47, 85, 228, 0.10), transparent 60%),
-      radial-gradient(800px 500px at -10% 110%, rgba(47, 85, 228, 0.06), transparent 60%);
+      radial-gradient(1200px 600px at 100% -10%, rgba(26,111,230, 0.10), transparent 60%),
+      radial-gradient(800px 500px at -10% 110%, rgba(26,111,230, 0.06), transparent 60%);
     background-attachment: fixed;
   }
   ::selection {

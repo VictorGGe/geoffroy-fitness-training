@@ -12,9 +12,9 @@ import { emptyToNull, errorMessage, fmtDate, fmtNum, fmtSigned, num, parseNum, t
 import type { Measurement } from "@/lib/types";
 
 const COLORS: Record<MeasurementKey, string> = {
-  waist_cm: "#4A6CF7",
+  waist_cm: "#2884FB",
   hips_cm: "#E7E9EE",
-  chest_cm: "#9DB4FF",
+  chest_cm: "#A9CDFF",
   thigh_cm: "#f59e0b",
   arm_cm: "#22c55e",
 };

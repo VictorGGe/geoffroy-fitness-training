@@ -419,7 +419,7 @@ export function ProgressionPanel({ clientId }: { clientId: string }) {
       )}
 
       <Card title={`${group.name} — ${m.label}`}>
-        <TimeChart data={chartData} series={[{ key: "value", label: m.label, color: "#4A6CF7" }]} unit={m.unit} />
+        <TimeChart data={chartData} series={[{ key: "value", label: m.label, color: "#2884FB" }]} unit={m.unit} />
         <p className="mt-2 text-xs text-ink-500">
           {isCardio
             ? activeMetric === "pace"

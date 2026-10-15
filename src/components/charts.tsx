@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { fmtDate, fmtDateShort, fmtNum } from "@/lib/format";
 
-export const CHART_COLORS = ["#4A6CF7", "#E7E9EE", "#7393FF", "#9AA2B2", "#2443BD"];
+export const CHART_COLORS = ["#2884FB", "#E7E9EE", "#5CA2FF", "#9AA2B2", "#155BC0"];
 
 export interface SeriesDef {
   key: string;

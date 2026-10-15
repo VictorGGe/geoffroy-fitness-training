@@ -70,7 +70,7 @@ export function ClientAccessCard({ client }: { client: Client }) {
   const siteUrl = typeof window !== "undefined" ? window.location.origin : "";
 
   const message = credentials
-    ? `Bonjour ${client.first_name},\n\nVoici ton accès à ton espace d'entraînement Geoffroy Fitness Training :\n\nAdresse : ${siteUrl}\nIdentifiant : ${credentials.email}\nMot de passe : ${credentials.password}\n\nTu y trouveras ton programme, tu pourras l'ajuster et noter tes séances (avec le chrono de repos).\nAstuce : sur ton téléphone, ajoute la page à ton écran d'accueil pour l'ouvrir comme une appli.\n\nÀ bientôt,\nGeoffroy`
+    ? `Bonjour ${client.first_name},\n\nVoici ton accès à ton espace d'entraînement Victor Training :\n\nAdresse : ${siteUrl}\nIdentifiant : ${credentials.email}\nMot de passe : ${credentials.password}\n\nTu y trouveras ton programme, tu pourras l'ajuster et noter tes séances (avec le chrono de repos).\nAstuce : sur ton téléphone, ajoute la page à ton écran d'accueil pour l'ouvrir comme une appli.\n\nÀ bientôt,\nVictor`
     : "";
 
   async function create(e?: React.FormEvent) {
@@ -166,7 +166,7 @@ export function ClientAccessCard({ client }: { client: Client }) {
           <p className="mt-2 text-xs text-ink-400">Le mot de passe n&apos;est affiché qu&apos;une fois : transmettez-le maintenant.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <a
-              href={`mailto:${encodeURIComponent(credentials.email)}?subject=${encodeURIComponent("Ton accès à ton programme — Geoffroy Fitness Training")}&body=${encodeURIComponent(message)}`}
+              href={`mailto:${encodeURIComponent(credentials.email)}?subject=${encodeURIComponent("Ton accès à ton programme — Victor Training")}&body=${encodeURIComponent(message)}`}
               className="inline-flex h-9 items-center gap-2 rounded-lg bg-royal-600 px-3 text-sm font-medium text-white hover:bg-royal-500"
             >
               <Mail className="h-4 w-4" /> Envoyer par e-mail

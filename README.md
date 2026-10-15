@@ -1,4 +1,4 @@
-# Geoffroy Fitness Training
+# Victor Training
 
 Application web **privée** de gestion de coaching sportif : clients, programmes de musculation personnalisés, bibliothèque d'exercices, suivi des performances (charges, répétitions, RPE, RIR, 1RM estimé) et suivi de perte de poids (pesées, objectifs, mensurations, bilans, PDF).
 
