@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Dumbbell, LayoutDashboard, ListChecks, LogOut, Scale, Search, Users } from "lucide-react";
+import { Dumbbell, Euro, LayoutDashboard, ListChecks, LogOut, Scale, Search, Users } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "./ui";
 
@@ -13,6 +13,7 @@ const NAV = [
   { href: "/programs", label: "Programmes", short: "Programmes", icon: ListChecks },
   { href: "/exercises", label: "Bibliothèque d'exercices", short: "Exercices", icon: Dumbbell },
   { href: "/weight", label: "Suivi de perte de poids", short: "Poids", icon: Scale },
+  { href: "/tarifs", label: "Grille tarifaire", short: "Tarifs", icon: Euro },
 ];
 
 function GlobalSearch({ autoFocus, onDone }: { autoFocus?: boolean; onDone?: () => void }) {
@@ -140,7 +141,7 @@ export function AppShell({ email, children }: { email: string; children: ReactNo
 
       {/* Navigation inférieure (mobile) */}
       <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-ink-800 bg-ink-900/95 backdrop-blur-md lg:hidden">
-        <div className="grid grid-cols-5">
+        <div className="grid grid-cols-6">
           {NAV.map(({ href, short, icon: Icon }) => (
             <Link
               key={href}
