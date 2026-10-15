@@ -1,6 +1,6 @@
 import { AuthShell } from "@/components/AuthShell";
 import { SUPABASE_KEY, SUPABASE_URL } from "@/lib/env";
-import { serviceRoleKeyInfo } from "@/lib/env-server";
+import { serviceRoleKeyInfo, testServiceKey } from "@/lib/env-server";
 
 export const dynamic = "force-dynamic";
 
@@ -74,7 +74,6 @@ async function runChecks(): Promise<Check[]> {
 
     // Accès clients (facultatif)
     const info = serviceRoleKeyInfo();
-    const secret = info.key;
     if (info.publicLeak.length) {
       checks.push({
         label: "Sécurité de la clé secrète",
@@ -82,7 +81,7 @@ async function runChecks(): Promise<Check[]> {
         detail: `DANGER : la clé secrète est dans ${info.publicLeak.join(", ")} (préfixe NEXT_PUBLIC_ = visible publiquement). Supprimez cette variable dans Vercel, créez une nouvelle clé secrète dans Supabase et mettez-la dans SUPABASE_SERVICE_ROLE_KEY.`,
       });
     }
-    if (!secret) {
+    if (!info.candidates.length) {
       checks.push({
         label: "Accès clients (SUPABASE_SERVICE_ROLE_KEY)",
         ok: false,
@@ -91,24 +90,21 @@ async function runChecks(): Promise<Check[]> {
           (info.related.length ? ` Variables trouvées : ${info.related.join(", ")}.` : ""),
       });
     } else {
-      try {
-        const res = await fetch(`${url}/rest/v1/client_accounts?select=user_id&limit=1`, {
-          headers: { apikey: secret, Authorization: `Bearer ${secret}` },
-          cache: "no-store",
-        });
-        const txt = await res.text();
-        checks.push({
-          label: "Accès clients (SUPABASE_SERVICE_ROLE_KEY)",
-          ok: res.ok,
-          detail: res.ok
-            ? `Clé secrète valide et table des accès présente${info.name && info.name !== "SUPABASE_SERVICE_ROLE_KEY" ? ` (lue dans ${info.name})` : ""}.`
-            : /client_accounts|does not exist|schema cache/i.test(txt)
-              ? "Clé valide, mais exécutez le fichier SQL 20261013000003_client_accounts.sql dans Supabase."
-              : `Clé refusée (code ${res.status}) : vérifiez que c'est bien la clé secrète / service_role.`,
-        });
-      } catch (e) {
-        checks.push({ label: "Accès clients (SUPABASE_SERVICE_ROLE_KEY)", ok: false, detail: `Vérification impossible : ${(e as Error).message}` });
-      }
+      const results = await Promise.all(info.candidates.map(async (c) => ({ c, r: await testServiceKey(url, c.key) })));
+      const good = results.find((x) => x.r.status === 200);
+      const tableMissing = results.find((x) => x.r.status !== 401 && x.r.status !== 403 && /client_accounts|does not exist|schema cache/i.test(x.r.body));
+      const lines = results.map(
+        (x) => `${x.c.name} = ${x.c.hint} → ${x.r.status === 200 ? "acceptée" : x.r.status === 401 || x.r.status === 403 ? "REFUSÉE (clé supprimée ou incorrecte)" : `code ${x.r.status}`}`,
+      );
+      checks.push({
+        label: "Accès clients (SUPABASE_SERVICE_ROLE_KEY)",
+        ok: !!good,
+        detail: good
+          ? `Clé secrète valide et table des accès présente. ${lines.join(" · ")}`
+          : tableMissing
+            ? "Clé valide, mais exécutez le fichier SQL 20261013000003_client_accounts.sql dans Supabase."
+            : `Aucune clé acceptée. ${lines.join(" · ")}. Comparez avec la clé affichée dans Supabase > API Keys > Secret keys, mettez la bonne dans Vercel, puis « Redeploy ».`,
+      });
     }
   }
   return checks;

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { SUPABASE_URL } from "@/lib/env";
-import { serviceRoleKey } from "@/lib/env-server";
+import { serviceRoleKeyInfo, workingServiceRoleKey } from "@/lib/env-server";
 
 export const dynamic = "force-dynamic";
 
@@ -30,11 +30,14 @@ async function authorize(clientId: unknown) {
   const { data: client } = await supabase.from("clients").select("id, first_name, last_name").eq("id", clientId).maybeSingle();
   if (!client) return { error: fail("Client introuvable.", 404) };
 
-  const key = serviceRoleKey();
+  const key = await workingServiceRoleKey(SUPABASE_URL);
   if (!key) {
+    const none = serviceRoleKeyInfo().candidates.length === 0;
     return {
       error: fail(
-        "La clé SUPABASE_SERVICE_ROLE_KEY n'est pas configurée dans Vercel. Ajoutez-la (Supabase > Project Settings > API Keys > clé secrète), puis faites « Redeploy ».",
+        none
+          ? "La clé SUPABASE_SERVICE_ROLE_KEY n'est pas configurée dans Vercel. Ajoutez-la (Supabase > Project Settings > API Keys > clé secrète), puis faites « Redeploy »."
+          : "La clé secrète enregistrée dans Vercel est refusée par Supabase (clé supprimée ou incorrecte). Ouvrez la page /diagnostic pour le détail.",
         500,
       ),
     };
