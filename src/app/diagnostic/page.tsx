@@ -68,6 +68,51 @@ async function runChecks(): Promise<Check[]> {
           ? "Présentes et protégées."
           : "Introuvables : exécutez les 2 fichiers SQL dans Supabase > SQL Editor.",
       });
+
+      // Chaque fonctionnalité ajoutée par un fichier SQL : on vérifie que ses tables/colonnes existent
+      // (aucune donnée n'est lue : la clé publique n'a pas le droit de lire ces tables).
+      if (tablesExist) {
+        const features: { label: string; file: string; probes: string[] }[] = [
+          { label: "Comptes clients", file: "20261013000003_client_accounts.sql", probes: ["client_accounts?select=user_id"] },
+          { label: "Exercices cardio", file: "20261014000004_cardio.sql", probes: ["program_exercises?select=duration_seconds,distance_km,hr_min"] },
+          { label: "Bilan de départ", file: "20261015000005_intake.sql", probes: ["client_intakes?select=id"] },
+          { label: "Nutrition (repas et macros)", file: "20261016000006_nutrition.sql", probes: ["food_entries?select=id,kcal", "nutrition_targets?select=client_id"] },
+        ];
+        const base = url.trim().replace(/\/$/, "");
+        // "yes" = présent, "no" = absent, "unknown" = serveur momentanément indisponible
+        const exists = async (probe: string): Promise<"yes" | "no" | "unknown"> => {
+          try {
+            const r = await fetch(`${base}/rest/v1/${probe}&limit=0`, {
+              headers: { apikey: key.trim(), Authorization: `Bearer ${key.trim()}` },
+              cache: "no-store",
+            });
+            const t = await r.text();
+            if (r.status === 404 || /PGRST205|42P01|42703|Could not find the table|does not exist/i.test(t)) return "no";
+            if (r.ok || r.status === 401 || r.status === 403) return "yes";
+            return "unknown";
+          } catch {
+            return "unknown";
+          }
+        };
+        const results = await Promise.all(
+          features.map(async (f) => {
+            const rs = await Promise.all(f.probes.map(exists));
+            return { f, state: rs.includes("no") ? "no" : rs.includes("unknown") ? "unknown" : "yes" };
+          }),
+        );
+        for (const { f, state } of results) {
+          checks.push({
+            label: `Fonctionnalité : ${f.label}`,
+            ok: state === "yes",
+            detail:
+              state === "yes"
+                ? "Activée."
+                : state === "no"
+                  ? `Pas encore activée : exécutez le fichier ${f.file} dans Supabase > SQL Editor.`
+                  : "Vérification impossible pour le moment : rechargez la page dans une minute.",
+          });
+        }
+      }
     } catch (e) {
       checks.push({ label: "Connexion au serveur Supabase", ok: false, detail: `Injoignable : ${(e as Error).message}` });
     }
