@@ -7,6 +7,7 @@ import { ChevronRight, ClipboardPlus, Dumbbell, ListChecks, Plus, Scale, Search,
 import { Badge, Card, EmptyState, ErrorBlock, Input, LoadingBlock, PageHeader, StatCard } from "@/components/ui";
 import { ClientForm } from "@/components/ClientForm";
 import { ProgramForm } from "@/components/ProgramForm";
+import { TodayAgenda } from "@/components/AgendaWidgets";
 import { getSupabase } from "@/lib/supabase/client";
 import { unwrap, useAsync } from "@/lib/hooks";
 import { fmtDate, fmtRelative, fullName, GOAL_LABELS, initials, matches, todayISO } from "@/lib/format";
@@ -108,6 +109,8 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      <TodayAgenda />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Clients actifs" value={activeClients.length} hint={`${data.clients.length} au total`} icon={<Users className="h-4 w-4" />} accent />

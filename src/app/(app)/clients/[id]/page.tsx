@@ -42,6 +42,7 @@ import { MeasurementsPanel } from "@/components/MeasurementsPanel";
 import { ReviewsPanel } from "@/components/ReviewsPanel";
 import { IntakePanel } from "@/components/IntakePanel";
 import { NutritionPanel } from "@/components/NutritionPanel";
+import { ClientAppointments } from "@/components/AgendaWidgets";
 import { useToast } from "@/components/toast";
 import { getSupabase } from "@/lib/supabase/client";
 import { unwrap, useAsync } from "@/lib/hooks";
@@ -237,6 +238,7 @@ function InfoTab({ client, onArchive, onDelete, onEdit }: { client: Client; onAr
         </Card>
       </div>
       <div className="space-y-5">
+      <ClientAppointments clientId={client.id} />
       <ClientAccessCard client={client} />
       <Card title="Gestion de la fiche">
         <div className="grid gap-2">

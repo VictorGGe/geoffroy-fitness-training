@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRight, ClipboardCheck, UserPlus, Users } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Field, Input, PageHeader, Select, cn } from "@/components/ui";
@@ -26,6 +26,28 @@ export default function BilanPage() {
   const [answers, setAnswers] = useState<IntakeAnswers>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rdvId, setRdvId] = useState<string | null>(null);
+
+  // Ouvert depuis l'agenda : client ou prospect déjà connu
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const c = q.get("client");
+    if (c) {
+      setMode("existing");
+      setClientId(c);
+    } else {
+      const full = (q.get("nom") ?? "").trim();
+      if (full) {
+        const [first, ...rest] = full.split(/\s+/);
+        setFirstName(first.slice(0, 80));
+        setLastName(rest.join(" ").slice(0, 80));
+      }
+    }
+    const d = q.get("date");
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) setDate(d);
+    const r = q.get("rdv");
+    if (r && /^[0-9a-f-]{36}$/i.test(r)) setRdvId(r);
+  }, []);
 
   const { data } = useAsync(async () => {
     const sb = getSupabase();
@@ -85,6 +107,9 @@ export default function BilanPage() {
       if (created && w !== null && w >= 20 && w <= 400) {
         await sb.from("weigh_ins").insert({ client_id: id, measured_on: date, weight_kg: w, comment: "Bilan de départ" });
       }
+
+      // Rendez-vous de l'agenda : rattaché au client et marqué comme fait
+      if (rdvId) await sb.from("appointments").update({ client_id: id, guest_name: null, status: "fait" }).eq("id", rdvId);
 
       toast.success(created ? "Client créé et bilan de départ enregistré." : "Bilan de départ enregistré.");
       router.push(`/clients/${id}?tab=bilans`);

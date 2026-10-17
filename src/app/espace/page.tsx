@@ -5,6 +5,7 @@ import { ChevronRight, ClipboardPlus, Dumbbell, ListChecks } from "lucide-react"
 import { Badge, Card, EmptyState, ErrorBlock, LinkButton, LoadingBlock, PageHeader } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
 import { getMyClientProfile } from "@/lib/data";
+import { MyAppointments } from "@/components/AgendaWidgets";
 import { unwrap, useAsync } from "@/lib/hooks";
 import { fmtDate, fmtRelative, GOAL_LABELS, LEVEL_LABELS } from "@/lib/format";
 import type { Program, WorkoutLog } from "@/lib/types";
@@ -39,6 +40,8 @@ export default function ClientHomePage() {
           </LinkButton>
         }
       />
+
+      <MyAppointments />
 
       <Card title="Mes programmes" padded={false}>
         {active.length === 0 ? (

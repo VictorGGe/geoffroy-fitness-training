@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ClipboardCheck, Dumbbell, Euro, LayoutDashboard, ListChecks, LogOut, Scale, Search, Users } from "lucide-react";
+import { CalendarDays, ClipboardCheck, Dumbbell, Euro, LayoutDashboard, ListChecks, LogOut, MoreHorizontal, Scale, Search, Users, X } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "./ui";
 
 const NAV = [
   { href: "/dashboard", label: "Tableau de bord", short: "Accueil", icon: LayoutDashboard },
+  { href: "/agenda", label: "Agenda", short: "Agenda", icon: CalendarDays },
   { href: "/clients", label: "Mes clients", short: "Clients", icon: Users },
   { href: "/bilans", label: "Bilan de départ", short: "Bilan", icon: ClipboardCheck },
   { href: "/programs", label: "Programmes", short: "Prog.", icon: ListChecks },
@@ -16,6 +17,10 @@ const NAV = [
   { href: "/weight", label: "Suivi de perte de poids", short: "Poids", icon: Scale },
   { href: "/tarifs", label: "Grille tarifaire", short: "Tarifs", icon: Euro },
 ];
+
+const MAIN_HREFS = ["/dashboard", "/agenda", "/clients", "/programs"];
+const MAIN = NAV.filter((n) => MAIN_HREFS.includes(n.href));
+const MORE = NAV.filter((n) => !MAIN_HREFS.includes(n.href));
 
 function GlobalSearch({ autoFocus, onDone }: { autoFocus?: boolean; onDone?: () => void }) {
   const router = useRouter();
@@ -63,9 +68,13 @@ function GlobalSearch({ autoFocus, onDone }: { autoFocus?: boolean; onDone?: () 
 export function AppShell({ email, children }: { email: string; children: ReactNode }) {
   const pathname = usePathname();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
 
-  useEffect(() => setSearchOpen(false), [pathname]);
+  useEffect(() => {
+    setSearchOpen(false);
+    setMoreOpen(false);
+  }, [pathname]);
 
   return (
     <div className="min-h-dvh lg:pl-[264px]">
@@ -140,15 +149,45 @@ export function AppShell({ email, children }: { email: string; children: ReactNo
 
       <main className="mx-auto max-w-7xl px-4 pb-28 pt-6 sm:px-6 lg:pb-12 lg:pt-8">{children}</main>
 
-      {/* Navigation inférieure (mobile) */}
-      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-ink-800 bg-ink-900/95 backdrop-blur-md lg:hidden">
-        <div className="grid grid-cols-7">
-          {NAV.map(({ href, short, icon: Icon }) => (
+      {/* Navigation inférieure (mobile) : l'essentiel + « Plus » */}
+      {moreOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setMoreOpen(false)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" />
+          <div
+            className="absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-ink-700 bg-ink-900 px-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-3 animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between px-2">
+              <p className="h-display text-lg text-white">Plus</p>
+              <button onClick={() => setMoreOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-300 hover:bg-ink-800" aria-label="Fermer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {MORE.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl border px-3 py-3 text-sm font-medium transition",
+                    isActive(href) ? "border-royal-500 bg-royal-600/15 text-white" : "border-ink-700 bg-ink-850 text-ink-200 hover:border-ink-500",
+                  )}
+                >
+                  <Icon className="h-5 w-5 text-royal-400" /> {label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      <nav className="safe-bottom fixed inset-x-0 bottom-0 z-50 border-t border-ink-800 bg-ink-900/95 backdrop-blur-md lg:hidden">
+        <div className="grid grid-cols-5">
+          {MAIN.map(({ href, short, icon: Icon }) => (
             <Link
               key={href}
               href={href}
               className={cn(
-                "flex min-w-0 flex-col items-center gap-1 px-0.5 py-2.5 text-[9.5px] font-medium tracking-tight transition",
+                "flex min-w-0 flex-col items-center gap-1 px-0.5 py-2.5 text-[10.5px] font-medium transition",
                 isActive(href) ? "text-royal-400" : "text-ink-500",
               )}
             >
@@ -156,6 +195,17 @@ export function AppShell({ email, children }: { email: string; children: ReactNo
               <span className="max-w-full truncate">{short}</span>
             </Link>
           ))}
+          <button
+            onClick={() => setMoreOpen((v) => !v)}
+            className={cn(
+              "flex min-w-0 flex-col items-center gap-1 px-0.5 py-2.5 text-[10.5px] font-medium transition",
+              moreOpen || MORE.some((m) => isActive(m.href)) ? "text-royal-400" : "text-ink-500",
+            )}
+            aria-expanded={moreOpen}
+          >
+            <MoreHorizontal className="h-5 w-5" />
+            Plus
+          </button>
         </div>
       </nav>
     </div>

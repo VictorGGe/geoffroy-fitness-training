@@ -77,6 +77,7 @@ async function runChecks(): Promise<Check[]> {
           { label: "Exercices cardio", file: "20261014000004_cardio.sql", probes: ["program_exercises?select=duration_seconds,distance_km,hr_min"] },
           { label: "Bilan de départ", file: "20261015000005_intake.sql", probes: ["client_intakes?select=id"] },
           { label: "Nutrition (repas et macros)", file: "20261016000006_nutrition.sql", probes: ["food_entries?select=id,kcal", "nutrition_targets?select=client_id"] },
+          { label: "Agenda", file: "20261017000007_agenda.sql", probes: ["appointments?select=id,starts_at"] },
         ];
         const base = url.trim().replace(/\/$/, "");
         // "yes" = présent, "no" = absent, "unknown" = serveur momentanément indisponible
