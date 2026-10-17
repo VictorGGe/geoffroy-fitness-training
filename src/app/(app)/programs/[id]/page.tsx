@@ -31,6 +31,7 @@ import {
   Copy,
   FileDown,
   GripVertical,
+  Layers,
   Pencil,
   Plus,
   RefreshCw,
@@ -59,6 +60,8 @@ import { useToast } from "@/components/toast";
 import { ProgramForm } from "@/components/ProgramForm";
 import { ExercisePicker } from "@/components/ExercisePicker";
 import { VideoThumb } from "@/components/ExerciseVideo";
+import { SchemeChips } from "@/components/SchemeChips";
+import { getLastScheme, schemeLabel, schemePatch, SCHEMES, setLastScheme, type Scheme } from "@/lib/schemes";
 import { getSupabase } from "@/lib/supabase/client";
 import { copySession, duplicateProgram, fetchProgramFull } from "@/lib/data";
 import { useAsync } from "@/lib/hooks";
@@ -136,7 +139,7 @@ export default function ProgramEditorPage() {
     });
   }
 
-  async function addExercises(sessionId: string, exs: Exercise[]) {
+  async function addExercises(sessionId: string, exs: Exercise[], scheme?: Scheme | null) {
     const session = sessions.find((s) => s.id === sessionId);
     const start = session?.program_exercises?.length ?? 0;
     await run(
@@ -147,7 +150,7 @@ export default function ProgramEditorPage() {
             exercise_id: e.id,
             position: start + i,
             set_type: "travail",
-            sets: isCardioExercise(e) ? 1 : null,
+            ...(isCardioExercise(e) ? { sets: 1 } : scheme ? schemePatch(scheme) : { sets: null }),
           })),
         ),
       exs.length > 1 ? `${exs.length} exercices ajoutés.` : "Exercice ajouté.",
@@ -273,9 +276,17 @@ export default function ProgramEditorPage() {
                 onDelete={() => run(() => sb.from("program_sessions").delete().eq("id", s.id), "Séance supprimée.")}
                 onAddExercise={() => setPickerFor(s.id)}
                 onReorder={(ordered) => reorderExercises(s.id, ordered)}
-                onSaveExercise={(exId, patch) =>
-                  run(() => sb.from("program_exercises").update(patch).eq("id", exId), "Paramètres enregistrés.")
+                onSaveExercise={(exId, patch, quiet) =>
+                  run(() => sb.from("program_exercises").update(patch).eq("id", exId), quiet ? undefined : "Paramètres enregistrés.")
                 }
+                onApplyScheme={(scheme) => {
+                  const targets = (s.program_exercises ?? []).filter((pe) => !isCardioExercise(pe.exercises) && pe.duration_seconds == null);
+                  return run(async () => {
+                    const results = await Promise.all(targets.map((pe) => sb.from("program_exercises").update(schemePatch(scheme)).eq("id", pe.id)));
+                    const failed = results.find((r) => r.error);
+                    if (failed) throw failed.error;
+                  }, `${schemeLabel(scheme)} appliqué à ${targets.length} exercice(s).`);
+                }}
                 onDeleteExercise={(exId) => run(() => sb.from("program_exercises").delete().eq("id", exId), "Exercice retiré.")}
               />
             ))
@@ -366,7 +377,8 @@ export default function ProgramEditorPage() {
       <ExercisePicker
         open={!!pickerFor}
         onClose={() => setPickerFor(null)}
-        onPick={(exs) => (pickerFor ? addExercises(pickerFor, exs) : undefined)}
+        withScheme
+        onPick={(exs, scheme) => (pickerFor ? addExercises(pickerFor, exs, scheme) : undefined)}
       />
       <ConfirmDialog
         open={confirmDelete}
@@ -402,6 +414,7 @@ function SessionCard({
   onReorder,
   onSaveExercise,
   onDeleteExercise,
+  onApplyScheme,
 }: {
   session: ProgramSession;
   index: number;
@@ -413,10 +426,13 @@ function SessionCard({
   onDelete: () => void;
   onAddExercise: () => void;
   onReorder: (ordered: ProgramExercise[]) => void;
-  onSaveExercise: (id: string, patch: Partial<ProgramExercise>) => Promise<void>;
+  onSaveExercise: (id: string, patch: Partial<ProgramExercise>, quiet?: boolean) => Promise<void>;
   onDeleteExercise: (id: string) => void;
+  onApplyScheme: (scheme: Scheme) => Promise<void>;
 }) {
   const [name, setName] = useState(session.name);
+  const [schemeOpen, setSchemeOpen] = useState(false);
+  const [schemeKey, setSchemeKey] = useState<string>("4x8-10");
   const [confirmDel, setConfirmDel] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [notes, setNotes] = useState(session.notes ?? "");
@@ -455,10 +471,24 @@ function SessionCard({
           }}
           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
           maxLength={80}
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 font-display text-lg font-semibold uppercase tracking-wide text-white outline-none hover:border-ink-600 focus:border-royal-500"
+          className="min-w-[9rem] flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 font-display text-lg font-semibold uppercase tracking-wide text-white outline-none hover:border-ink-600 focus:border-royal-500"
           aria-label="Nom de la séance"
         />
         <div className="flex items-center">
+          {exercises.length > 0 && (
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => {
+                setSchemeKey(getLastScheme());
+                setSchemeOpen(true);
+              }}
+              title="Même séries × répétitions pour toute la séance"
+              aria-label="Appliquer un schéma à toute la séance"
+            >
+              <Layers className="h-4 w-4" />
+            </Button>
+          )}
           <Button size="icon" variant="ghost" onClick={() => onMove(-1)} disabled={index === 0} aria-label="Monter la séance">
             <ArrowUp className="h-4 w-4" />
           </Button>
@@ -517,7 +547,7 @@ function SessionCard({
                 key={pe.id}
                 pe={pe}
                 index={i}
-                onSave={(patch) => onSaveExercise(pe.id, patch)}
+                onSave={(patch, quiet) => onSaveExercise(pe.id, patch, quiet)}
                 onDelete={() => onDeleteExercise(pe.id)}
               />
             ))}
@@ -530,6 +560,37 @@ function SessionCard({
           <Plus className="h-4 w-4" /> Ajouter un exercice
         </Button>
       </div>
+
+      <Modal
+        open={schemeOpen}
+        onClose={() => setSchemeOpen(false)}
+        title="Toute la séance"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setSchemeOpen(false)}>
+              Annuler
+            </Button>
+            <Button
+              onClick={async () => {
+                const sc = SCHEMES.find((x) => x.key === schemeKey);
+                if (!sc) return;
+                setLastScheme(sc.key);
+                setSchemeOpen(false);
+                await onApplyScheme(sc);
+              }}
+            >
+              Appliquer
+            </Button>
+          </>
+        }
+      >
+        <p className="mb-3 text-sm text-ink-300">
+          Mettre les mêmes séries, répétitions et repos à tous les exercices de musculation de <strong className="text-white">{session.name}</strong>.
+          Les charges et les autres réglages ne changent pas.
+        </p>
+        <SchemeChips value={schemeKey} onChange={setSchemeKey} />
+      </Modal>
 
       <ConfirmDialog
         open={confirmDel}
@@ -567,6 +628,90 @@ function paramsSummary(pe: ProgramExercise) {
   return parts;
 }
 
+/** Réglages secondaires affichés sous le nom (les 4 principaux sont modifiables directement). */
+function extrasSummary(pe: ProgramExercise) {
+  const parts: string[] = [];
+  if (num(pe.rpe) !== null) parts.push(`RPE ${fmtNum(pe.rpe)}`);
+  if (pe.rir !== null && pe.rir !== undefined) parts.push(`RIR ${pe.rir}`);
+  if (pe.tempo) parts.push(`Tempo ${pe.tempo}`);
+  return parts;
+}
+
+function restInput(s: number | null | undefined): string {
+  if (s == null) return "";
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return r ? `${m}:${String(r).padStart(2, "0")}` : `${m} min`;
+}
+
+/** Séries, répétitions, charge et repos modifiables directement dans la liste (enregistrement automatique). */
+function QuickParams({ pe, onSave }: { pe: ProgramExercise; onSave: (patch: Partial<ProgramExercise>) => Promise<void> }) {
+  const [f, setF] = useState({
+    sets: pe.sets?.toString() ?? "",
+    reps: pe.reps ?? "",
+    load: num(pe.load_kg)?.toString().replace(".", ",") ?? "",
+    rest: restInput(pe.rest_seconds),
+  });
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => setF((x) => ({ ...x, sets: pe.sets?.toString() ?? "" })), [pe.sets]);
+  useEffect(() => setF((x) => ({ ...x, reps: pe.reps ?? "" })), [pe.reps]);
+  useEffect(() => setF((x) => ({ ...x, load: num(pe.load_kg)?.toString().replace(".", ",") ?? "" })), [pe.load_kg]);
+  useEffect(() => setF((x) => ({ ...x, rest: restInput(pe.rest_seconds) })), [pe.rest_seconds]);
+
+  async function commit(k: keyof typeof f) {
+    setErr(null);
+    const v = f[k].trim();
+    let patch: Partial<ProgramExercise> | null = null;
+    if (k === "sets") {
+      const n = v ? parseNum(v) : null;
+      if (v && (n === null || !Number.isInteger(n) || n < 0 || n > 50)) return setErr("Séries : nombre entre 0 et 50.");
+      if (n !== (pe.sets ?? null)) patch = { sets: n };
+    } else if (k === "reps") {
+      if ((v || null) !== (pe.reps ?? null)) patch = { reps: v.slice(0, 30) || null };
+    } else if (k === "load") {
+      const n = v ? parseNum(v) : null;
+      if (v && (n === null || n < 0 || n > 1000)) return setErr("Charge invalide.");
+      if (n !== num(pe.load_kg)) patch = { load_kg: n };
+    } else {
+      const n = v ? parseRest(v) : null;
+      if (v && (n === null || n > 3600)) return setErr("Repos : ex. 90, 1:30 ou 2 min.");
+      if (n !== (pe.rest_seconds ?? null)) patch = { rest_seconds: n };
+    }
+    if (patch) await onSave(patch);
+  }
+
+  const cells: { k: keyof typeof f; label: string; ph: string; mode: "numeric" | "decimal" | "text" }[] = [
+    { k: "sets", label: "Séries", ph: "4", mode: "numeric" },
+    { k: "reps", label: "Répét.", ph: "8-10", mode: "text" },
+    { k: "load", label: "Charge kg", ph: "—", mode: "decimal" },
+    { k: "rest", label: "Repos", ph: "1:30", mode: "text" },
+  ];
+  return (
+    <div className="px-3 pb-3 sm:pl-[3.25rem] sm:pr-4">
+      <div className="grid max-w-md grid-cols-4 gap-2">
+        {cells.map((c) => (
+          <label key={c.k} className="min-w-0">
+            <span className="mb-0.5 block truncate text-[10.5px] font-medium uppercase tracking-wider text-ink-500">{c.label}</span>
+            <input
+              className="input-sm text-center tabular-nums"
+              value={f[c.k]}
+              inputMode={c.mode}
+              placeholder={c.ph}
+              maxLength={c.k === "reps" ? 30 : 12}
+              aria-label={`${c.label} — ${pe.exercises?.name ?? "exercice"}`}
+              onChange={(e) => setF({ ...f, [c.k]: e.target.value })}
+              onBlur={() => commit(c.k)}
+              onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+            />
+          </label>
+        ))}
+      </div>
+      {err && <p className="mt-1.5 text-xs text-red-400">{err}</p>}
+    </div>
+  );
+}
+
 function SortableExerciseRow({
   pe,
   index,
@@ -575,14 +720,15 @@ function SortableExerciseRow({
 }: {
   pe: ProgramExercise;
   index: number;
-  onSave: (patch: Partial<ProgramExercise>) => Promise<void>;
+  onSave: (patch: Partial<ProgramExercise>, quiet?: boolean) => Promise<void>;
   onDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: pe.id });
   const [editing, setEditing] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [swapOpen, setSwapOpen] = useState(false);
-  const summary = paramsSummary(pe);
+  const isStrength = !isCardioExercise(pe.exercises) && pe.duration_seconds == null && num(pe.distance_km) === null && pe.hr_min == null && !pe.intensity;
+  const summary = isStrength ? extrasSummary(pe) : paramsSummary(pe);
 
   return (
     <li
@@ -600,14 +746,24 @@ function SortableExerciseRow({
         >
           <GripVertical className="h-4 w-4" />
         </button>
-        <VideoThumb url={pe.exercises?.video_url} title={pe.exercises?.name ?? "Exercice"} />
+        <VideoThumb url={pe.exercises?.video_url} title={pe.exercises?.name ?? "Exercice"} size="sm" />
         <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setEditing((v) => !v)}>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold tabular-nums text-ink-500">{index + 1}.</span>
-            <span className="truncate font-medium text-white">{pe.exercises?.name ?? "Exercice supprimé"}</span>
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5 text-xs font-semibold tabular-nums text-ink-500">{index + 1}.</span>
+            <span className="line-clamp-2 font-medium leading-snug text-white">{pe.exercises?.name ?? "Exercice supprimé"}</span>
             {pe.set_type && pe.set_type !== "travail" && <Badge tone="amber">{SET_TYPE_LABELS[pe.set_type]}</Badge>}
           </div>
-          {summary.length > 0 ? (
+          {isStrength ? (
+            summary.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {summary.map((s) => (
+                  <span key={s} className="rounded-md bg-ink-750 px-2 py-0.5 text-[12px] tabular-nums text-ink-200">
+                    {s}
+                  </span>
+                ))}
+              </div>
+            )
+          ) : summary.length > 0 ? (
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {summary.map((s) => (
                 <span key={s} className="rounded-md bg-ink-750 px-2 py-0.5 text-[12px] tabular-nums text-ink-200">
@@ -629,6 +785,7 @@ function SortableExerciseRow({
           </Button>
         </div>
       </div>
+      {isStrength && !editing && <QuickParams pe={pe} onSave={(patch) => onSave(patch, true)} />}
       {editing && (
         <ParamsEditor
           pe={pe}
@@ -684,7 +841,7 @@ function ParamsEditor({
     load_kg: num(pe.load_kg)?.toString().replace(".", ",") ?? "",
     rpe: num(pe.rpe)?.toString().replace(".", ",") ?? "",
     rir: pe.rir?.toString() ?? "",
-    rest: pe.rest_seconds != null ? fmtRest(pe.rest_seconds).replace(" min ", ":").replace(" min", " min") : "",
+    rest: restInput(pe.rest_seconds),
     tempo: pe.tempo ?? "",
     set_type: pe.set_type ?? "",
     technical_cues: pe.technical_cues ?? "",
@@ -699,6 +856,9 @@ function ParamsEditor({
   );
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [advanced, setAdvanced] = useState(
+    num(pe.rpe) !== null || pe.rir != null || !!pe.tempo || (!!pe.set_type && pe.set_type !== "travail") || !!pe.comments,
+  );
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setF((x) => ({ ...x, [k]: e.target.value }));
 
@@ -793,44 +953,69 @@ function ParamsEditor({
         </Field>
       </div>
       ) : (
-      <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-        <Field label="Séries">
-          <Input inputMode="numeric" value={f.sets} onChange={set("sets")} placeholder="4" />
-        </Field>
-        <Field label="Répétitions">
-          <Input value={f.reps} onChange={set("reps")} placeholder="6-8" maxLength={30} />
-        </Field>
-        <Field label="Charge (kg)">
-          <Input inputMode="decimal" value={f.load_kg} onChange={set("load_kg")} placeholder="80" />
-        </Field>
-        <Field label="RPE cible">
-          <Input inputMode="decimal" value={f.rpe} onChange={set("rpe")} placeholder="8" />
-        </Field>
-        <Field label="RIR cible">
-          <Input inputMode="numeric" value={f.rir} onChange={set("rir")} placeholder="2" />
-        </Field>
-        <Field label="Repos">
-          <Input value={f.rest} onChange={set("rest")} placeholder="3 min" />
-        </Field>
-        <Field label="Tempo">
-          <Input value={f.tempo} onChange={set("tempo")} placeholder="3-1-1-0" maxLength={20} />
-        </Field>
-        <Field label="Type de série" className="col-span-2">
-          <Select value={f.set_type} onChange={set("set_type")}>
-            <option value="">—</option>
-            {Object.entries(SET_TYPE_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Consignes techniques" className="col-span-3 sm:col-span-6">
+      <div className="space-y-4">
+        <div>
+          <p className="label">Remplissage rapide</p>
+          <SchemeChips
+            size="sm"
+            value={SCHEMES.find((x) => String(x.sets) === f.sets && x.reps === f.reps && restInput(x.rest) === f.rest)?.key ?? null}
+            onChange={(key) => {
+              const sc = SCHEMES.find((x) => x.key === key);
+              if (sc) setF((x) => ({ ...x, sets: String(sc.sets), reps: sc.reps, rest: restInput(sc.rest) }));
+            }}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Field label="Séries">
+            <Input inputMode="numeric" value={f.sets} onChange={set("sets")} placeholder="4" />
+          </Field>
+          <Field label="Répétitions">
+            <Input value={f.reps} onChange={set("reps")} placeholder="6-8" maxLength={30} />
+          </Field>
+          <Field label="Charge (kg)">
+            <Input inputMode="decimal" value={f.load_kg} onChange={set("load_kg")} placeholder="80" />
+          </Field>
+          <Field label="Repos">
+            <Input value={f.rest} onChange={set("rest")} placeholder="1:30" />
+          </Field>
+        </div>
+        <Field label="Consignes techniques">
           <Textarea value={f.technical_cues} onChange={set("technical_cues")} rows={2} placeholder="Ex. : omoplates serrées, contrôler la descente" maxLength={2000} />
         </Field>
-        <Field label="Commentaire" className="col-span-3 sm:col-span-6">
-          <Textarea value={f.comments} onChange={set("comments")} rows={2} maxLength={2000} />
-        </Field>
+        <button
+          type="button"
+          onClick={() => setAdvanced((v) => !v)}
+          className="text-sm font-medium text-royal-300 hover:text-royal-200"
+          aria-expanded={advanced}
+        >
+          {advanced ? "− Moins d'options" : "+ Plus d'options (RPE, RIR, tempo, type de série, commentaire)"}
+        </button>
+        {advanced && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 animate-fade-in">
+            <Field label="RPE cible">
+              <Input inputMode="decimal" value={f.rpe} onChange={set("rpe")} placeholder="8" />
+            </Field>
+            <Field label="RIR cible">
+              <Input inputMode="numeric" value={f.rir} onChange={set("rir")} placeholder="2" />
+            </Field>
+            <Field label="Tempo">
+              <Input value={f.tempo} onChange={set("tempo")} placeholder="3-1-1-0" maxLength={20} />
+            </Field>
+            <Field label="Type de série">
+              <Select value={f.set_type} onChange={set("set_type")}>
+                <option value="">—</option>
+                {Object.entries(SET_TYPE_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Commentaire" className="col-span-2 sm:col-span-4">
+              <Textarea value={f.comments} onChange={set("comments")} rows={2} maxLength={2000} />
+            </Field>
+          </div>
+        )}
       </div>
       )}
       {err && <p className="mt-3 text-sm text-red-400">{err}</p>}

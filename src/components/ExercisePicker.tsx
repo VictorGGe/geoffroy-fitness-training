@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Plus, Search } from "lucide-react";
 import { Badge, Button, Input, LoadingBlock, Modal, Select, cn } from "./ui";
 import { ExerciseForm } from "./ExerciseForm";
+import { SchemeChips } from "./SchemeChips";
+import { getLastScheme, setLastScheme, SCHEMES, type Scheme } from "@/lib/schemes";
 import { getSupabase } from "@/lib/supabase/client";
 import { useMode } from "@/lib/mode";
 import { matches } from "@/lib/format";
@@ -16,12 +18,15 @@ export function ExercisePicker({
   onPick,
   multiple = true,
   title = "Ajouter des exercices",
+  withScheme = false,
 }: {
   open: boolean;
   onClose: () => void;
-  onPick: (exercises: Exercise[]) => void | Promise<void>;
+  onPick: (exercises: Exercise[], scheme?: Scheme | null) => void | Promise<void>;
   multiple?: boolean;
   title?: string;
+  /** Propose de remplir directement séries / répétitions / repos */
+  withScheme?: boolean;
 }) {
   const [all, setAll] = useState<Exercise[] | null>(null);
   const [q, setQ] = useState("");
@@ -29,12 +34,14 @@ export function ExercisePicker({
   const [selected, setSelected] = useState<Exercise[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [scheme, setScheme] = useState<string>("none");
   const canCreate = useMode() === "coach";
 
   useEffect(() => {
     if (!open) return;
     setQ("");
     setSelected([]);
+    setScheme(getLastScheme());
     getSupabase()
       .from("exercises")
       .select("*")
@@ -58,7 +65,8 @@ export function ExercisePicker({
     if (!items.length) return;
     setBusy(true);
     try {
-      await onPick(items);
+      if (withScheme) setLastScheme(scheme);
+      await onPick(items, withScheme ? (SCHEMES.find((x) => x.key === scheme) ?? null) : null);
       onClose();
     } finally {
       setBusy(false);
@@ -90,6 +98,13 @@ export function ExercisePicker({
           ) : undefined
         }
       >
+        {withScheme && multiple && (
+          <div className="mb-4 rounded-xl border border-ink-700 bg-ink-900/60 p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-400">Séries × répétitions pour ces exercices</p>
+            <SchemeChips value={scheme} onChange={setScheme} allowNone size="sm" />
+            <p className="mt-2 text-[11px] text-ink-500">Tu pourras ajuster chaque exercice ensuite (charge, RPE, tempo…).</p>
+          </div>
+        )}
         <div className="mb-3 flex flex-col gap-2 sm:flex-row">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-500" />
