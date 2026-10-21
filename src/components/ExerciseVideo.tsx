@@ -25,7 +25,17 @@ export function VideoPlayer({ info, title, autoplay = false }: { info: VideoInfo
     );
   }
   if (info.kind === "file") {
-    return <video src={info.src} controls playsInline autoPlay={autoplay} className="absolute inset-0 h-full w-full bg-black object-contain" />;
+    return (
+      <video
+        src={info.src}
+        poster={info.thumb ?? undefined}
+        controls
+        playsInline
+        preload="metadata"
+        autoPlay={autoplay}
+        className="absolute inset-0 h-full w-full bg-black object-contain"
+      />
+    );
   }
   return null;
 }

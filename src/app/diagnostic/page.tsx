@@ -101,6 +101,17 @@ async function runChecks(): Promise<Check[]> {
             return { f, state: rs.includes("no") ? "no" : rs.includes("unknown") ? "unknown" : "yes" };
           }),
         );
+        // Espace de stockage des vidéos envoyées depuis le téléphone
+        try {
+          const r = await fetch(`${base}/storage/v1/object/public/exercise-videos/__diagnostic__.mp4`, { cache: "no-store" });
+          const t = await r.text();
+          results.push({
+            f: { label: "Vidéos depuis le téléphone", file: "20261021000008_exercise_videos.sql", probes: [] },
+            state: /bucket not found/i.test(t) ? "no" : /object not found|not_found|404/i.test(t) || r.ok ? "yes" : "unknown",
+          });
+        } catch {
+          /* ignoré */
+        }
         for (const { f, state } of results) {
           checks.push({
             label: `Fonctionnalité : ${f.label}`,

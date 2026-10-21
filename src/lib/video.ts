@@ -2,7 +2,7 @@
 export type VideoInfo =
   | { kind: "youtube"; id: string; embed: string; thumb: string; start: number | null }
   | { kind: "vimeo"; id: string; embed: string; thumb: null }
-  | { kind: "file"; src: string; thumb: null }
+  | { kind: "file"; src: string; thumb: string | null }
   | { kind: "link"; href: string; thumb: null };
 
 function parseStart(u: URL): number | null {
@@ -49,7 +49,12 @@ export function parseVideo(url: string | null | undefined): VideoInfo | null {
   }
 
   // Fichier vidéo direct
-  if (/\.(mp4|webm|mov|m4v|ogg)$/i.test(u.pathname)) return { kind: "file", src: u.toString(), thumb: null };
+  if (/\.(mp4|webm|mov|m4v|ogg)$/i.test(u.pathname)) {
+    const src = u.toString();
+    // Vidéo envoyée depuis l'application : une miniature .jpg est enregistrée à côté
+    const stored = src.includes("/storage/v1/object/public/exercise-videos/");
+    return { kind: "file", src, thumb: stored ? src.replace(/\.(mp4|webm|mov|m4v)(\?.*)?$/i, ".jpg") : null };
+  }
 
   return { kind: "link", href: u.toString(), thumb: null };
 }

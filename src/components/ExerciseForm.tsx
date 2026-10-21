@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Field, Input, Modal, Select, Textarea } from "./ui";
 import { useToast } from "./toast";
+import { ExerciseVideoInput } from "./ExerciseVideoInput";
+import { deleteStoredVideo } from "@/lib/videoUpload";
 import { getSupabase } from "@/lib/supabase/client";
 import { emptyToNull, EQUIPMENT, errorMessage, MOVEMENT_TYPES, MUSCLE_GROUPS } from "@/lib/format";
 import type { Exercise } from "@/lib/types";
@@ -37,10 +39,14 @@ export function ExerciseForm({
   const [form, setForm] = useState(EMPTY);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [videoBusy, setVideoBusy] = useState(false);
+  const uploaded = useRef<string[]>([]);
+  const onBusy = useCallback((b: boolean) => setVideoBusy(b), []);
 
   useEffect(() => {
     if (!open) return;
     setError(null);
+    uploaded.current = [];
     setForm(
       exercise
         ? {
@@ -65,6 +71,7 @@ export function ExerciseForm({
   async function save(e?: React.FormEvent) {
     e?.preventDefault();
     setError(null);
+    if (videoBusy) return setError("Attends la fin de l'envoi de la vidéo.");
     if (!form.name.trim()) return setError("Le nom de l'exercice est requis.");
     const url = form.video_url.trim();
     if (url && !/^https?:\/\/\S+$/i.test(url)) return setError("Le lien vidéo doit commencer par http:// ou https://");
@@ -80,23 +87,36 @@ export function ExerciseForm({
       : await sb.from("exercises").insert(payload).select("*").single();
     setSaving(false);
     if (res.error) return setError(errorMessage(res.error));
+    // Nettoyage du stockage : ancienne vidéo remplacée et envois non conservés
+    const kept = (res.data as Exercise).video_url;
+    const stale = [...uploaded.current, ...(exercise?.video_url ? [exercise.video_url] : [])].filter((u) => u !== kept);
+    uploaded.current = [];
+    stale.forEach((u) => deleteStoredVideo(u).catch(() => {}));
     toast.success(exercise ? "Exercice mis à jour." : "Exercice ajouté à la bibliothèque.");
     onSaved(res.data as Exercise);
+    onClose();
+  }
+
+  function close() {
+    if (videoBusy) return;
+    // Fermé sans enregistrer : les vidéos envoyées entre-temps ne servent à rien
+    uploaded.current.forEach((u) => deleteStoredVideo(u).catch(() => {}));
+    uploaded.current = [];
     onClose();
   }
 
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={close}
       size="lg"
       title={exercise ? "Modifier l'exercice" : "Nouvel exercice"}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={close} disabled={videoBusy}>
             Annuler
           </Button>
-          <Button onClick={() => save()} loading={saving}>
+          <Button onClick={() => save()} loading={saving} disabled={videoBusy}>
             Enregistrer
           </Button>
         </>
@@ -133,9 +153,16 @@ export function ExerciseForm({
         <Field label="Variantes possibles" className="sm:col-span-3">
           <Textarea value={form.variations} onChange={set("variations")} rows={2} maxLength={2000} />
         </Field>
-        <Field label="Lien vidéo de démonstration" className="sm:col-span-3">
-          <Input type="url" value={form.video_url} onChange={set("video_url")} placeholder="https://…" />
-        </Field>
+        <div className="sm:col-span-3">
+          <p className="label">Vidéo de démonstration</p>
+          <ExerciseVideoInput
+            value={form.video_url}
+            onChange={(url) => setForm((f) => ({ ...f, video_url: url }))}
+            title={form.name}
+            onUploaded={(url) => uploaded.current.push(url)}
+            onBusy={onBusy}
+          />
+        </div>
         <Field label="Notes personnelles" className="sm:col-span-3" hint="Attention : visibles aussi par les clients qui ont un accès à leur espace.">
           <Textarea value={form.notes} onChange={set("notes")} rows={2} maxLength={4000} />
         </Field>

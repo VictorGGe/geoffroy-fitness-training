@@ -17,6 +17,7 @@ import {
 } from "@/components/ui";
 import { ExerciseForm } from "@/components/ExerciseForm";
 import { InlineVideo } from "@/components/ExerciseVideo";
+import { deleteStoredVideo } from "@/lib/videoUpload";
 import { useToast } from "@/components/toast";
 import { getSupabase } from "@/lib/supabase/client";
 import { importStarterLibrary } from "@/lib/data";
@@ -73,6 +74,7 @@ export default function ExercisesPage() {
     const { error } = await getSupabase().from("exercises").delete().eq("id", deleting.id);
     setBusy(false);
     if (error) return toast.error(errorMessage(error));
+    deleteStoredVideo(deleting.video_url).catch(() => {});
     toast.success("Exercice supprimé.");
     setDeleting(null);
     setViewing(null);
