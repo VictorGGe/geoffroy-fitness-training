@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { HardDrive, Link2, Smartphone, Trash2, Upload } from "lucide-react";
+import { Camera, HardDrive, Images, Link2, Smartphone, Trash2, Upload } from "lucide-react";
 import { Button, Input } from "./ui";
 import { InlineVideo } from "./ExerciseVideo";
 import { cn } from "@/lib/cn";
@@ -15,8 +15,13 @@ import {
   needsCompression,
   prepareVideo,
   storageUsage,
+  unlockForCompression,
   uploadToStorage,
+  type Unlocked,
 } from "@/lib/videoUpload";
+
+/** Types acceptés pour « déjà filmée » : ouvre la galerie / les fichiers plutôt que la caméra. */
+const GALLERY_ACCEPT = "video/mp4,video/quicktime,video/webm,video/3gpp,video/x-m4v,video/*,.mp4,.mov,.m4v,.webm,.3gp";
 
 type Phase = { step: "idle" } | { step: "ready"; file: File } | { step: "compress"; ratio: number } | { step: "upload"; ratio: number };
 
@@ -42,6 +47,7 @@ export function ExerciseVideoInput({
   const [err, setErr] = useState<string | null>(null);
   const [usage, setUsage] = useState<{ bytes: number; count: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const camRef = useRef<HTMLInputElement>(null);
   const busy = phase.step === "compress" || phase.step === "upload";
 
   useEffect(() => onBusy(busy), [busy, onBusy]);
@@ -60,15 +66,15 @@ export function ExerciseVideoInput({
     return () => window.removeEventListener("beforeunload", h);
   }, [busy]);
 
-  async function process(file: File) {
+  async function process(file: File, unlocked: Unlocked | null) {
     setErr(null);
     try {
+      setPhase({ step: "compress", ratio: 0 });
+      const prepared = await prepareVideo(file, (r) => setPhase({ step: "compress", ratio: r }), unlocked);
+      if (prepared.blob.size > MAX_UPLOAD_BYTES) throw new Error("Vidéo trop lourde (50 Mo maximum).");
       const { data } = await getSupabase().auth.getUser();
       if (!data.user) throw new Error("Session expirée : reconnecte-toi.");
-      setPhase({ step: "compress", ratio: 0 });
-      const poster = await makePoster(file);
-      const prepared = await prepareVideo(file, (r) => setPhase({ step: "compress", ratio: r }));
-      if (prepared.blob.size > MAX_UPLOAD_BYTES) throw new Error("Vidéo trop lourde (50 Mo maximum).");
+      const poster = await makePoster(prepared.blob);
       const base = `${data.user.id}/${crypto.randomUUID()}`;
       setPhase({ step: "upload", ratio: 0 });
       const url = await uploadToStorage(`${base}.${prepared.ext}`, prepared.blob, prepared.contentType, (r) => setPhase({ step: "upload", ratio: r }));
@@ -82,14 +88,21 @@ export function ExerciseVideoInput({
       setPhase({ step: "idle" });
     } finally {
       if (fileRef.current) fileRef.current.value = "";
+      if (camRef.current) camRef.current.value = "";
     }
+  }
+
+  /** Doit être appelé directement depuis le geste de l'utilisateur (déblocage de la lecture). */
+  function startFromTap(file: File) {
+    const unlocked = needsCompression(file) ? unlockForCompression(file) : null;
+    void process(file, unlocked);
   }
 
   function onFile(file: File | undefined) {
     if (!file) return;
     setErr(null);
     if (needsCompression(file)) setPhase({ step: "ready", file });
-    else process(file);
+    else void process(file, null);
   }
 
   const stored = isStoredVideo(value);
@@ -99,7 +112,7 @@ export function ExerciseVideoInput({
       <div className="inline-flex rounded-lg border border-ink-700 bg-ink-900 p-0.5 text-xs font-medium">
         {(
           [
-            ["phone", "Mon téléphone", Smartphone],
+            ["phone", "Vidéo du téléphone", Smartphone],
             ["link", "Lien YouTube", Link2],
           ] as const
         ).map(([k, label, Icon]) => (
@@ -128,9 +141,18 @@ export function ExerciseVideoInput({
           <input
             ref={fileRef}
             type="file"
-            accept="video/*"
+            accept={GALLERY_ACCEPT}
             className="hidden"
             aria-label="Choisir une vidéo"
+            onChange={(e) => onFile(e.target.files?.[0])}
+          />
+          <input
+            ref={camRef}
+            type="file"
+            accept="video/*"
+            capture="environment"
+            className="hidden"
+            aria-label="Filmer une vidéo"
             onChange={(e) => onFile(e.target.files?.[0])}
           />
           {phase.step === "compress" || phase.step === "upload" ? (
@@ -152,7 +174,7 @@ export function ExerciseVideoInput({
                 La vidéo va être optimisée pour se lire sur tous les téléphones et prendre moins de place. Ça prend à peu près la durée de la vidéo.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => process(phase.file)}>
+                <Button size="sm" onClick={() => startFromTap(phase.file)}>
                   <Upload className="h-4 w-4" /> Optimiser et envoyer
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setPhase({ step: "idle" })}>
@@ -161,13 +183,22 @@ export function ExerciseVideoInput({
               </div>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-ink-600 px-4 py-4 text-sm font-medium text-royal-300 transition hover:border-royal-500 hover:bg-royal-600/5"
-            >
-              <Smartphone className="h-4 w-4" /> {value ? "Remplacer par une vidéo du téléphone" : "Filmer ou choisir une vidéo"}
-            </button>
+            <div className="grid gap-2 sm:grid-cols-[1.4fr_1fr]">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-royal-500/60 bg-royal-600/15 px-4 py-4 text-sm font-semibold text-white transition hover:bg-royal-600/25"
+              >
+                <Images className="h-5 w-5 text-royal-300" /> {value ? "Remplacer par une vidéo de ma galerie" : "Choisir une vidéo déjà filmée"}
+              </button>
+              <button
+                type="button"
+                onClick={() => camRef.current?.click()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-ink-600 px-4 py-4 text-sm font-medium text-ink-300 transition hover:border-royal-500 hover:text-royal-300"
+              >
+                <Camera className="h-4 w-4" /> Filmer maintenant
+              </button>
+            </div>
           )}
         </>
       )}

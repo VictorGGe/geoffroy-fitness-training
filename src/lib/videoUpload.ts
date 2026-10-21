@@ -107,59 +107,108 @@ export function needsCompression(file: File): boolean {
   return file.size > DIRECT_UPLOAD_BYTES || !universal;
 }
 
+export interface Unlocked {
+  video: HTMLVideoElement;
+  audioCtx: AudioContext | null;
+  audioStream: MediaStream | null;
+}
+
+/**
+ * À appeler DIRECTEMENT dans le clic de l'utilisateur (sans attente avant) :
+ * les téléphones n'autorisent la lecture d'une vidéo avec son que pendant un geste.
+ * Le son est envoyé vers l'enregistreur uniquement : rien ne sort du haut-parleur.
+ */
+export function unlockForCompression(file: File): Unlocked {
+  const v = document.createElement("video");
+  v.preload = "auto";
+  v.playsInline = true;
+  v.src = URL.createObjectURL(file);
+  let audioCtx: AudioContext | null = null;
+  let audioStream: MediaStream | null = null;
+  try {
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    audioCtx = new AC();
+    audioCtx.resume().catch(() => {});
+    const src = audioCtx.createMediaElementSource(v);
+    const dest = audioCtx.createMediaStreamDestination();
+    src.connect(dest);
+    audioStream = dest.stream;
+    v.muted = false;
+  } catch {
+    audioCtx = null;
+    audioStream = null;
+    v.muted = true;
+  }
+  // Lecture lancée puis mise en pause : la vidéo est « débloquée » pour la suite
+  const p = v.play();
+  if (p) p.then(() => v.pause()).catch(() => {});
+  return { video: v, audioCtx, audioStream };
+}
+
+function waitMetadata(v: HTMLVideoElement): Promise<void> {
+  if (v.readyState >= 1) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    v.addEventListener("loadedmetadata", () => resolve(), { once: true });
+    v.addEventListener("error", () => reject(new VideoError("Cette vidéo ne peut pas être lue par le navigateur.")), { once: true });
+  });
+}
+
+function asIs(file: File): Prepared {
+  const lower = file.name.toLowerCase();
+  if (file.type === "video/webm" || lower.endsWith(".webm")) return { blob: file, ext: "webm", contentType: "video/webm", compressed: false };
+  if (file.type === "video/quicktime" || lower.endsWith(".mov")) return { blob: file, ext: "mov", contentType: "video/quicktime", compressed: false };
+  if (lower.endsWith(".m4v")) return { blob: file, ext: "m4v", contentType: "video/x-m4v", compressed: false };
+  return { blob: file, ext: "mp4", contentType: "video/mp4", compressed: false };
+}
+
 /**
  * Prépare la vidéo à l'envoi. La compression se fait en lisant la vidéo une fois
  * (elle dure donc à peu près la durée de la vidéo) : l'écran doit rester allumé.
+ * Si la compression est impossible sur ce téléphone, la vidéo d'origine est envoyée telle quelle (≤ 50 Mo).
  */
-export async function prepareVideo(file: File, onProgress: (ratio: number) => void): Promise<Prepared> {
-  if (!file.type.startsWith("video/") && !/\.(mp4|mov|m4v|webm|3gp)$/i.test(file.name)) {
+export async function prepareVideo(file: File, onProgress: (ratio: number) => void, unlocked?: Unlocked | null): Promise<Prepared> {
+  if (file.type && !file.type.startsWith("video/") && !/\.(mp4|mov|m4v|webm|3gp)$/i.test(file.name)) {
     throw new VideoError("Ce fichier n'est pas une vidéo.");
   }
-  if (!needsCompression(file)) {
-    const webm = file.type === "video/webm" || /\.webm$/i.test(file.name);
-    return { blob: file, ext: webm ? "webm" : "mp4", contentType: webm ? "video/webm" : "video/mp4", compressed: false };
+  if (!needsCompression(file)) return asIs(file);
+  try {
+    return await compress(file, onProgress, unlocked ?? null);
+  } catch (e) {
+    if (e instanceof VideoError && /trop longue|écran allumé/.test(e.message)) throw e;
+    if (file.size <= MAX_UPLOAD_BYTES) return asIs(file);
+    throw e instanceof VideoError
+      ? e
+      : new VideoError("Impossible d'optimiser cette vidéo sur ce téléphone, et elle dépasse 50 Mo. Raccourcis-la dans ta galerie puis réessaie.");
   }
+}
 
+async function compress(file: File, onProgress: (ratio: number) => void, unlocked: Unlocked | null): Promise<Prepared> {
   const mime = pickMime();
-  if (!mime) {
-    if (file.size <= MAX_UPLOAD_BYTES) {
-      const mov = /\.mov$/i.test(file.name) || file.type === "video/quicktime";
-      return { blob: file, ext: mov ? "mov" : "mp4", contentType: file.type || "video/mp4", compressed: false };
-    }
-    throw new VideoError("Vidéo trop lourde (50 Mo maximum) et ce navigateur ne sait pas la compresser. Raccourcis-la ou filme en 720p.");
-  }
+  if (!mime) throw new VideoError("Vidéo trop lourde (50 Mo maximum) et ce navigateur ne sait pas la compresser. Raccourcis-la ou filme en 720p.");
 
-  const v = await loadVideo(file);
+  const u = unlocked ?? unlockForCompression(file);
+  const v = u.video;
+  await waitMetadata(v);
   if (!v.duration || !Number.isFinite(v.duration)) throw new VideoError("Durée de la vidéo illisible.");
   if (v.duration > MAX_DURATION_S) throw new VideoError(`Vidéo trop longue (${Math.round(v.duration / 60)} min). Maximum 5 minutes : raccourcis-la dans ta galerie.`);
 
-  const { w, h } = scaled(v.videoWidth, v.videoHeight);
+  const { w, h } = scaled(v.videoWidth || 1280, v.videoHeight || 720);
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d")!;
   const stream = canvas.captureStream(30);
-
-  // Son : passe par Web Audio (sans sortir sur le haut-parleur)
-  let audioCtx: AudioContext | null = null;
-  try {
-    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    audioCtx = new AC();
-    await audioCtx.resume();
-    v.muted = false;
-    v.volume = 1;
-    const src = audioCtx.createMediaElementSource(v);
-    const dest = audioCtx.createMediaStreamDestination();
-    src.connect(dest);
-    dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
-  } catch {
-    v.muted = true; // pas de son : on garde l'image
-  }
+  u.audioStream?.getAudioTracks().forEach((t) => stream.addTrack(t));
 
   const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: VIDEO_BPS, audioBitsPerSecond: 96_000 });
   const chunks: Blob[] = [];
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
   const stopped = new Promise<void>((res) => (rec.onstop = () => res()));
+  const cleanup = () => {
+    stream.getTracks().forEach((t) => t.stop());
+    u.audioCtx?.close().catch(() => {});
+    URL.revokeObjectURL(v.src);
+  };
 
   let raf = 0;
   const draw = () => {
@@ -168,14 +217,22 @@ export async function prepareVideo(file: File, onProgress: (ratio: number) => vo
     if (!v.ended && !v.paused) raf = requestAnimationFrame(draw);
   };
 
+  v.pause();
   v.currentTime = 0;
-  rec.start(1000);
+  await u.audioCtx?.resume().catch(() => {});
   try {
     await v.play();
   } catch {
-    rec.stop();
-    throw new VideoError("Impossible de lire la vidéo pour la compresser. Réessaie en touchant le bouton d'envoi.");
+    // Lecture avec son refusée : on continue sans le son plutôt que d'échouer
+    v.muted = true;
+    try {
+      await v.play();
+    } catch {
+      cleanup();
+      throw new Error("lecture impossible");
+    }
   }
+  rec.start(1000);
   raf = requestAnimationFrame(draw);
   let hiddenAbort: (() => void) | null = null;
   try {
@@ -194,8 +251,7 @@ export async function prepareVideo(file: File, onProgress: (ratio: number) => vo
     cancelAnimationFrame(raf);
     v.pause();
     rec.stop();
-    stream.getTracks().forEach((t) => t.stop());
-    audioCtx?.close().catch(() => {});
+    cleanup();
     throw e;
   } finally {
     if (hiddenAbort) document.removeEventListener("visibilitychange", hiddenAbort);
@@ -204,14 +260,12 @@ export async function prepareVideo(file: File, onProgress: (ratio: number) => vo
   ctx.drawImage(v, 0, 0, w, h);
   rec.stop();
   await stopped;
-  stream.getTracks().forEach((t) => t.stop());
-  audioCtx?.close().catch(() => {});
-  URL.revokeObjectURL(v.src);
+  cleanup();
   onProgress(1);
 
   const type = mime.split(";")[0];
   const blob = new Blob(chunks, { type });
-  if (blob.size < 1000) throw new VideoError("La compression a échoué (écran éteint ou application en arrière-plan ?). Réessaie en gardant l'écran allumé.");
+  if (blob.size < 1000) throw new Error("compression vide");
   if (blob.size > MAX_UPLOAD_BYTES) throw new VideoError("Même compressée, la vidéo dépasse 50 Mo. Raccourcis-la un peu.");
   return { blob, ext: type === "video/webm" ? "webm" : "mp4", contentType: type, compressed: true };
 }
