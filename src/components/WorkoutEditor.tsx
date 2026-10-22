@@ -8,6 +8,7 @@ import { RestTimer, unlockAudio, type RestRequest } from "./RestTimer";
 import { Badge, Button, Card, ConfirmDialog, Field, Input, LoadingBlock, PageHeader, Select, Textarea, cn } from "./ui";
 import { ExercisePicker } from "./ExercisePicker";
 import { VideoThumb } from "./ExerciseVideo";
+import { ExerciseSheetButton } from "./ExerciseSheet";
 import { useToast } from "./toast";
 import { getSupabase } from "@/lib/supabase/client";
 import { fetchProgramFull, getMyClientProfile } from "@/lib/data";
@@ -582,9 +583,12 @@ export function WorkoutEditor({
               <header className="flex items-start gap-3 border-b border-ink-700/60 bg-ink-800/60 px-4 py-3">
                 <VideoThumb url={b.video_url ?? (b.exercise_id ? videos[b.exercise_id] : null)} title={b.exercise_name} />
                 <div className="min-w-0 flex-1">
-                  <p className="font-display text-lg font-semibold uppercase tracking-wide text-white">
-                    <span className="mr-2 text-royal-400">{bi + 1}.</span>
-                    {b.exercise_name}
+                  <p className="flex items-start gap-1 font-display text-lg font-semibold uppercase tracking-wide text-white">
+                    <span className="min-w-0">
+                      <span className="mr-2 text-royal-400">{bi + 1}.</span>
+                      {b.exercise_name}
+                    </span>
+                    <ExerciseSheetButton exerciseId={b.exercise_id} name={b.exercise_name} className="-mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-royal-300 transition hover:bg-royal-600/15" />
                   </p>
                   {b.planned && (
                     <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-royal-300">

@@ -1,4 +1,5 @@
 import type { SetType } from "./types";
+import { guideFor } from "./exerciseGuide";
 
 /** Bibliothèque de base, importable en un clic (modifiable ensuite). */
 export interface StarterExercise {
@@ -6,11 +7,14 @@ export interface StarterExercise {
   muscle_group: string;
   equipment: string;
   movement_type: string;
+  description?: string;
   execution_cues?: string;
   common_mistakes?: string;
+  variations?: string;
 }
 
-export const STARTER_EXERCISES: StarterExercise[] = [
+/** Version courte d'origine (sert à reconnaître les fiches jamais modifiées par le coach). */
+const BASE_EXERCISES: StarterExercise[] = [
   // Pectoraux
   { name: "Développé couché à la barre", muscle_group: "Pectoraux", equipment: "Barre", movement_type: "Poussée horizontale", execution_cues: "Omoplates serrées et abaissées, pieds ancrés au sol, descente contrôlée jusqu'au bas des pectoraux.", common_mistakes: "Fesses qui décollent, coudes trop ouverts, rebond de la barre sur la poitrine." },
   { name: "Développé incliné aux haltères", muscle_group: "Pectoraux", equipment: "Haltères", movement_type: "Poussée horizontale", execution_cues: "Banc à 30°, coudes à 45° du buste, amplitude complète.", common_mistakes: "Inclinaison trop forte, haltères qui s'entrechoquent en haut." },
@@ -73,6 +77,19 @@ export const STARTER_EXERCISES: StarterExercise[] = [
   { name: "Corde à sauter", muscle_group: "Cardio", equipment: "Corde", movement_type: "Cardio" },
   { name: "Natation", muscle_group: "Cardio", equipment: "Piscine", movement_type: "Cardio" },
 ];
+
+/** Bibliothèque de base avec les fiches techniques complètes. */
+export const STARTER_EXERCISES: StarterExercise[] = BASE_EXERCISES.map((e) => {
+  const g = guideFor(e.name);
+  return g
+    ? { ...e, description: g.description, execution_cues: g.execution_cues, common_mistakes: g.common_mistakes, variations: g.variations }
+    : e;
+});
+
+/** Textes courts de la toute première version de la bibliothèque, par nom. */
+export const LEGACY_STARTER_TEXT: Map<string, { execution_cues?: string; common_mistakes?: string }> = new Map(
+  BASE_EXERCISES.map((e) => [e.name, { execution_cues: e.execution_cues, common_mistakes: e.common_mistakes }]),
+);
 
 export interface TemplateExercise {
   name: string;

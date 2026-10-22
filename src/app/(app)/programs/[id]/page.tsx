@@ -60,6 +60,7 @@ import { useToast } from "@/components/toast";
 import { ProgramForm } from "@/components/ProgramForm";
 import { ExercisePicker } from "@/components/ExercisePicker";
 import { VideoThumb } from "@/components/ExerciseVideo";
+import { ExerciseSheetButton } from "@/components/ExerciseSheet";
 import { SchemeChips } from "@/components/SchemeChips";
 import { getLastScheme, schemeLabel, schemePatch, SCHEMES, setLastScheme, type Scheme } from "@/lib/schemes";
 import { getSupabase } from "@/lib/supabase/client";
@@ -777,6 +778,7 @@ function SortableExerciseRow({
           {pe.technical_cues && !editing && <p className="mt-1.5 line-clamp-2 text-xs italic text-ink-400">{pe.technical_cues}</p>}
         </button>
         <div className="flex">
+          <ExerciseSheetButton exerciseId={pe.exercise_id} name={pe.exercises?.name ?? "Exercice"} />
           <Button size="icon" variant="ghost" onClick={() => setEditing((v) => !v)} aria-label="Modifier les paramètres">
             <Pencil className="h-4 w-4" />
           </Button>

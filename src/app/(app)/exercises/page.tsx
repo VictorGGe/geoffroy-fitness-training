@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Dumbbell, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { BookOpenText, Download, Dumbbell, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import {
   Badge,
   Button,
@@ -20,7 +20,7 @@ import { InlineVideo } from "@/components/ExerciseVideo";
 import { deleteStoredVideo } from "@/lib/videoUpload";
 import { useToast } from "@/components/toast";
 import { getSupabase } from "@/lib/supabase/client";
-import { importStarterLibrary } from "@/lib/data";
+import { enrichExerciseLibrary, importStarterLibrary } from "@/lib/data";
 import { unwrap, useAsync } from "@/lib/hooks";
 import { errorMessage, matches } from "@/lib/format";
 import type { Exercise } from "@/lib/types";
@@ -37,6 +37,7 @@ export default function ExercisesPage() {
   const [viewing, setViewing] = useState<Row | null>(null);
   const [deleting, setDeleting] = useState<Row | null>(null);
   const [busy, setBusy] = useState(false);
+  const [enrichOpen, setEnrichOpen] = useState(false);
 
   const { data, loading, error, reload } = useAsync(async () => {
     return unwrap(await getSupabase().from("exercises").select("*, program_exercises(count)").order("name")) as Row[];
@@ -68,6 +69,26 @@ export default function ExercisesPage() {
     }
   }
 
+  async function enrichLibrary() {
+    setBusy(true);
+    try {
+      const { updated, matched } = await enrichExerciseLibrary();
+      toast.success(
+        updated
+          ? `${updated} fiche(s) complétée(s) avec les explications détaillées.`
+          : matched
+            ? "Toutes les fiches reconnues sont déjà complètes."
+            : "Aucun exercice de la bibliothèque de base trouvé.",
+      );
+      setEnrichOpen(false);
+      reload();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function confirmDelete() {
     if (!deleting) return;
     setBusy(true);
@@ -88,7 +109,10 @@ export default function ExercisesPage() {
         subtitle={data ? `${data.length} exercice(s)` : undefined}
         actions={
           <>
-            <Button variant="secondary" onClick={importLibrary} loading={busy && !deleting}>
+            <Button variant="secondary" onClick={() => setEnrichOpen(true)}>
+              <BookOpenText className="h-4 w-4" /> Compléter les fiches
+            </Button>
+            <Button variant="secondary" onClick={importLibrary} loading={busy && !deleting && !enrichOpen}>
               <Download className="h-4 w-4" /> Bibliothèque de base
             </Button>
             <Button
@@ -218,6 +242,25 @@ export default function ExercisesPage() {
       </Modal>
 
       <ExerciseForm open={formOpen} onClose={() => setFormOpen(false)} exercise={editing} onSaved={() => reload()} />
+
+      <ConfirmDialog
+        open={enrichOpen}
+        title="Compléter les fiches d'exercices ?"
+        message={
+          <>
+            Les exercices de la bibliothèque de base reçoivent une fiche complète : <strong className="text-white">description</strong>,{" "}
+            <strong className="text-white">exécution pas à pas</strong>, <strong className="text-white">erreurs fréquentes</strong> et{" "}
+            <strong className="text-white">variantes</strong>.
+            <br />
+            <span className="mt-2 block text-ink-400">Tes propres textes ne sont jamais remplacés : seules les cases vides sont remplies.</span>
+          </>
+        }
+        confirmLabel="Compléter"
+        danger={false}
+        loading={busy}
+        onConfirm={enrichLibrary}
+        onCancel={() => setEnrichOpen(false)}
+      />
 
       <ConfirmDialog
         open={!!deleting}

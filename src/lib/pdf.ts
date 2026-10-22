@@ -363,7 +363,8 @@ export async function exportProgramPdf(program: Program, sessions: ProgramSessio
       const ex = pe.exercises;
       const notes = [
         ex?.description && `Explications : ${ex.description}`,
-        ex?.execution_cues && `Exécution : ${ex.execution_cues}`,
+        ex?.execution_cues && `Exécution :\n${ex.execution_cues}`,
+        ex?.common_mistakes && `Erreurs à éviter :\n${ex.common_mistakes}`,
         pe.technical_cues && `Consignes : ${pe.technical_cues}`,
         pe.comments && `Note : ${pe.comments}`,
       ]

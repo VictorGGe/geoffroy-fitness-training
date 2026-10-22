@@ -2,8 +2,9 @@
 
 import { getSupabase } from "./supabase/client";
 import { normalize } from "./format";
-import { STARTER_EXERCISES, STARTER_TEMPLATES } from "./starter";
-import type { Program, ProgramExercise, ProgramSession } from "./types";
+import { LEGACY_STARTER_TEXT, STARTER_EXERCISES, STARTER_TEMPLATES } from "./starter";
+import { guideFor } from "./exerciseGuide";
+import type { Exercise, Program, ProgramExercise, ProgramSession } from "./types";
 
 function check<T>(res: { data: T; error: unknown }): T {
   if (res.error) throw res.error;
@@ -18,6 +19,44 @@ export async function importStarterLibrary(): Promise<number> {
   const toInsert = STARTER_EXERCISES.filter((e) => !have.has(normalize(e.name)));
   if (toInsert.length) check(await sb.from("exercises").insert(toInsert));
   return toInsert.length;
+}
+
+/**
+ * Complète les fiches de la bibliothèque avec les explications détaillées.
+ * Ne remplace jamais un texte écrit par le coach : seuls les champs vides
+ * (ou encore identiques au texte court d'origine) sont remplis.
+ */
+export async function enrichExerciseLibrary(): Promise<{ updated: number; matched: number }> {
+  const sb = getSupabase();
+  const rows = check(
+    await sb.from("exercises").select("id, name, description, execution_cues, common_mistakes, variations"),
+  ) as Pick<Exercise, "id" | "name" | "description" | "execution_cues" | "common_mistakes" | "variations">[];
+  const legacyByNorm = new Map([...LEGACY_STARTER_TEXT.entries()].map(([n, t]) => [normalize(n), t]));
+  let matched = 0;
+  const patches: { id: string; patch: Record<string, string> }[] = [];
+  for (const r of rows) {
+    const g = guideFor(r.name);
+    if (!g) continue;
+    matched++;
+    const legacy = legacyByNorm.get(normalize(r.name)) ?? {};
+    const patch: Record<string, string> = {};
+    const fill = (k: "description" | "execution_cues" | "common_mistakes" | "variations", v: string) => {
+      const cur = (r[k] ?? "").trim();
+      const old = (legacy as Record<string, string | undefined>)[k]?.trim();
+      if (!cur || (old && cur === old)) patch[k] = v;
+    };
+    fill("description", g.description);
+    fill("execution_cues", g.execution_cues);
+    fill("common_mistakes", g.common_mistakes);
+    fill("variations", g.variations);
+    if (Object.keys(patch).length) patches.push({ id: r.id, patch });
+  }
+  for (let i = 0; i < patches.length; i += 10) {
+    const res = await Promise.all(patches.slice(i, i + 10).map((p) => sb.from("exercises").update(p.patch).eq("id", p.id)));
+    const failed = res.find((x) => x.error);
+    if (failed) throw failed.error;
+  }
+  return { updated: patches.length, matched };
 }
 
 /** Retourne l'id de chaque exercice par nom, en créant ceux qui manquent. */
@@ -127,7 +166,7 @@ export async function fetchProgramFull(id: string): Promise<{ program: Program; 
   const sessions = check(
     await sb
       .from("program_sessions")
-      .select("*, program_exercises(*, exercises(id, name, muscle_group, equipment, movement_type, description, execution_cues, video_url))")
+      .select("*, program_exercises(*, exercises(id, name, muscle_group, equipment, movement_type, description, execution_cues, common_mistakes, variations, video_url))")
       .eq("program_id", id)
       .order("position"),
   ) as ProgramSession[];

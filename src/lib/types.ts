@@ -86,7 +86,7 @@ export interface ProgramExercise {
   hr_min?: number | null;
   hr_max?: number | null;
   exercises?: (Pick<Exercise, "id" | "name" | "muscle_group" | "equipment"> &
-    Partial<Pick<Exercise, "description" | "execution_cues" | "video_url" | "movement_type">>) | null;
+    Partial<Pick<Exercise, "description" | "execution_cues" | "common_mistakes" | "variations" | "video_url" | "movement_type">>) | null;
 }
 
 export interface WorkoutLog {
