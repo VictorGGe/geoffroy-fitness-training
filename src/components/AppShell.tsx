@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { CalendarDays, ClipboardCheck, Dumbbell, Euro, LayoutDashboard, ListChecks, LogOut, MoreHorizontal, Scale, Search, Users, X } from "lucide-react";
+import { CalendarDays, ClipboardCheck, Dumbbell, Euro, Footprints, LayoutDashboard, ListChecks, LogOut, MoreHorizontal, Scale, Search, Users, X } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "./ui";
 
@@ -15,6 +15,7 @@ const NAV = [
   { href: "/programs", label: "Programmes", short: "Prog.", icon: ListChecks },
   { href: "/exercises", label: "Bibliothèque d'exercices", short: "Exos", icon: Dumbbell },
   { href: "/weight", label: "Suivi de perte de poids", short: "Poids", icon: Scale },
+  { href: "/course", label: "Course à pied", short: "Course", icon: Footprints },
   { href: "/tarifs", label: "Grille tarifaire", short: "Tarifs", icon: Euro },
 ];
 

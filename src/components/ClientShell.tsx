@@ -3,16 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { ClipboardPlus, History, ListChecks, LogOut, Utensils } from "lucide-react";
+import { ClipboardPlus, Footprints, History, ListChecks, LogOut, Utensils } from "lucide-react";
 import { Logo } from "./Logo";
 import { cn } from "@/lib/cn";
 import { ModeProvider } from "@/lib/mode";
 
 const NAV = [
-  { href: "/espace", label: "Mes programmes", icon: ListChecks, exact: true },
-  { href: "/espace/seances/nouvelle", label: "Nouvelle séance", icon: ClipboardPlus, exact: true },
-  { href: "/espace/seances", label: "Mes séances", icon: History, exact: false },
-  { href: "/espace/nutrition", label: "Nutrition", icon: Utensils, exact: false },
+  { href: "/espace", label: "Mes programmes", short: "Programmes", icon: ListChecks, exact: true },
+  { href: "/espace/seances/nouvelle", label: "Nouvelle séance", short: "Séance", icon: ClipboardPlus, exact: true },
+  { href: "/espace/seances", label: "Mes séances", short: "Historique", icon: History, exact: false },
+  { href: "/espace/course", label: "Course", short: "Course", icon: Footprints, exact: false },
+  { href: "/espace/nutrition", label: "Nutrition", short: "Nutrition", icon: Utensils, exact: false },
 ];
 
 export function ClientShell({ firstName, email, children }: { firstName: string; email: string; children: ReactNode }) {
@@ -64,18 +65,18 @@ export function ClientShell({ firstName, email, children }: { firstName: string;
         <main className="mx-auto max-w-5xl px-4 pb-28 pt-6 sm:px-6 md:pb-12 lg:pt-8">{children}</main>
 
         <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-ink-800 bg-ink-900/95 backdrop-blur-md md:hidden">
-          <div className="grid grid-cols-4">
-            {NAV.map(({ href, label, icon: Icon, exact }) => (
+          <div className="grid grid-cols-5">
+            {NAV.map(({ href, short, icon: Icon, exact }) => (
               <Link
                 key={href}
                 href={href}
                 className={cn(
-                  "flex flex-col items-center gap-1 py-2.5 text-[10.5px] font-medium transition",
+                  "flex min-w-0 flex-col items-center gap-1 px-0.5 py-2.5 text-[10.5px] font-medium transition",
                   active(href, exact) ? "text-royal-400" : "text-ink-500",
                 )}
               >
                 <Icon className="h-5 w-5" />
-                {label}
+                <span className="max-w-full truncate">{short}</span>
               </Link>
             ))}
           </div>
