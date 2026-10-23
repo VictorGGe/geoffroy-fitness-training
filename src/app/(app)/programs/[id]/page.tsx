@@ -61,6 +61,8 @@ import { ProgramForm } from "@/components/ProgramForm";
 import { ExercisePicker } from "@/components/ExercisePicker";
 import { VideoThumb } from "@/components/ExerciseVideo";
 import { ExerciseSheetButton } from "@/components/ExerciseSheet";
+import { KcalChip } from "@/components/KcalChip";
+import { kcalForPlanned, useClientWeight, weightNote } from "@/lib/calories";
 import { SchemeChips } from "@/components/SchemeChips";
 import { getLastScheme, schemeLabel, schemePatch, SCHEMES, setLastScheme, type Scheme } from "@/lib/schemes";
 import { getSupabase } from "@/lib/supabase/client";
@@ -101,6 +103,7 @@ export default function ProgramEditorPage() {
   const [deleting, setDeleting] = useState(false);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [pdfBusy, setPdfBusy] = useState<string | null>(null);
+  const weight = useClientWeight(data?.program.client_id ?? null, !paths.isClient);
 
   if (loading) return <LoadingBlock />;
   if (error || !data) return <ErrorBlock message={error ?? "Programme introuvable."} onRetry={reload} />;
@@ -267,6 +270,8 @@ export default function ProgramEditorPage() {
             sessions.map((s, i) => (
               <SessionCard
                 key={s.id}
+                kg={weight.kg}
+                kcalNote={weightNote(weight)}
                 session={s}
                 index={i}
                 count={sessions.length}
@@ -416,7 +421,11 @@ function SessionCard({
   onSaveExercise,
   onDeleteExercise,
   onApplyScheme,
+  kg,
+  kcalNote,
 }: {
+  kg: number;
+  kcalNote: string;
   session: ProgramSession;
   index: number;
   count: number;
@@ -474,6 +483,11 @@ function SessionCard({
           maxLength={80}
           className="min-w-[9rem] flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 font-display text-lg font-semibold uppercase tracking-wide text-white outline-none hover:border-ink-600 focus:border-royal-500"
           aria-label="Nom de la séance"
+        />
+        <KcalChip
+          strong
+          kcal={exercises.reduce((n, pe) => n + kcalForPlanned(pe, pe.exercises ?? {}, kg), 0)}
+          title={`Dépense estimée pour la séance — ${kcalNote} (visible uniquement par toi)`}
         />
         <div className="flex items-center">
           {exercises.length > 0 && (
@@ -548,6 +562,7 @@ function SessionCard({
                 key={pe.id}
                 pe={pe}
                 index={i}
+                kcal={kcalForPlanned(pe, pe.exercises ?? {}, kg)}
                 onSave={(patch, quiet) => onSaveExercise(pe.id, patch, quiet)}
                 onDelete={() => onDeleteExercise(pe.id)}
               />
@@ -716,11 +731,13 @@ function QuickParams({ pe, onSave }: { pe: ProgramExercise; onSave: (patch: Part
 function SortableExerciseRow({
   pe,
   index,
+  kcal,
   onSave,
   onDelete,
 }: {
   pe: ProgramExercise;
   index: number;
+  kcal: number;
   onSave: (patch: Partial<ProgramExercise>, quiet?: boolean) => Promise<void>;
   onDelete: () => void;
 }) {
@@ -754,6 +771,7 @@ function SortableExerciseRow({
             <span className="line-clamp-2 font-medium leading-snug text-white">{pe.exercises?.name ?? "Exercice supprimé"}</span>
             {pe.set_type && pe.set_type !== "travail" && <Badge tone="amber">{SET_TYPE_LABELS[pe.set_type]}</Badge>}
           </div>
+          <KcalChip kcal={kcal} className="mt-1.5" />
           {isStrength ? (
             summary.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1.5">

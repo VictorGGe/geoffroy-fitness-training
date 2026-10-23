@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ClipboardPlus, Dumbbell, Pencil, Trophy } from "lucide-react";
 import { Badge, Card, EmptyState, ErrorBlock, Input, LinkButton, LoadingBlock, Select, StatCard, cn } from "./ui";
 import { TimeChart } from "./charts";
+import { KcalChip } from "./KcalChip";
+import { kcalForSets, useClientWeight, weightNote, type ExLike } from "@/lib/calories";
 import { getSupabase } from "@/lib/supabase/client";
 import { usePaths } from "@/lib/mode";
 import { unwrap, useAsync } from "@/lib/hooks";
@@ -21,6 +23,17 @@ export function SessionHistory({ clientId }: { clientId: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [open, setOpen] = useState<string | null>(null);
+  const weight = useClientWeight(clientId, !paths.isClient);
+  const [exInfo, setExInfo] = useState<Map<string, ExLike>>(new Map());
+  useEffect(() => {
+    if (paths.isClient) return;
+    getSupabase()
+      .from("exercises")
+      .select("id, name, movement_type, muscle_group")
+      .then(({ data: ex }) => setExInfo(new Map((ex ?? []).map((e) => [e.id as string, e as ExLike]))));
+  }, [paths.isClient]);
+  const exKcal = (g: { name: string; sets: WorkoutSet[] }) =>
+    kcalForSets(exInfo.get(g.sets[0]?.exercise_id ?? "") ?? { name: g.name }, g.sets, weight.kg);
 
   const { data, loading, error, reload } = useAsync(async () => {
     return unwrap(
@@ -73,6 +86,7 @@ export function SessionHistory({ clientId }: { clientId: string }) {
             const sets = [...(l.workout_sets ?? [])].sort((a, b) => a.exercise_order - b.exercise_order || a.set_number - b.set_number);
             const exercises = groupByExercise(sets);
             const volume = sets.reduce((v, s) => v + (num(s.load_kg) ?? 0) * (num(s.reps) ?? 0), 0);
+            const kcal = paths.isClient ? 0 : exercises.reduce((n, g) => n + exKcal(g), 0);
             const isOpen = open === l.id;
             return (
               <div key={l.id} className="card overflow-hidden">
@@ -92,6 +106,7 @@ export function SessionHistory({ clientId }: { clientId: string }) {
                       {fmtDateLong(l.performed_on)} · {exercises.length} exercice(s) · {sets.length} série(s)
                       {volume > 0 && ` · ${fmtNum(volume, 1)} kg de volume`}
                     </p>
+                    <KcalChip kcal={kcal} className="mt-1" title={`Dépense estimée — ${weightNote(weight)} (visible uniquement par toi)`} />
                   </div>
                   <ChevronDown className={cn("h-5 w-5 text-ink-500 transition", isOpen && "rotate-180")} />
                 </button>
@@ -100,7 +115,10 @@ export function SessionHistory({ clientId }: { clientId: string }) {
                     <div className="space-y-4">
                       {exercises.map((ex) => (
                         <div key={ex.key}>
-                          <p className="mb-1.5 text-sm font-semibold text-white">{ex.name}</p>
+                          <p className="mb-1.5 flex flex-wrap items-center gap-2 text-sm font-semibold text-white">
+                            {ex.name}
+                            <KcalChip kcal={paths.isClient ? 0 : exKcal(ex)} />
+                          </p>
                           <SetsTable sets={ex.sets} />
                         </div>
                       ))}

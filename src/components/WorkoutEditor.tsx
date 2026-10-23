@@ -9,6 +9,8 @@ import { Badge, Button, Card, ConfirmDialog, Field, Input, LoadingBlock, PageHea
 import { ExercisePicker } from "./ExercisePicker";
 import { VideoThumb } from "./ExerciseVideo";
 import { ExerciseSheetButton } from "./ExerciseSheet";
+import { KcalChip } from "./KcalChip";
+import { kcalForSets, useClientWeight, weightNote } from "@/lib/calories";
 import { useToast } from "./toast";
 import { getSupabase } from "@/lib/supabase/client";
 import { fetchProgramFull, getMyClientProfile } from "@/lib/data";
@@ -128,6 +130,22 @@ export function WorkoutEditor({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rest, setRest] = useState<(RestRequest & { blockKey: string; si: number }) | null>(null);
+  const weight = useClientWeight(clientId || null, !paths.isClient);
+
+  /** Calories estimées d'un exercice à partir des séries remplies (coach uniquement). */
+  function blockKcal(b: Block): number {
+    const sets = b.sets
+      .filter((s) => s.load || s.reps || s.duration || s.distance)
+      .map((s) => ({
+        reps: parseNum(s.reps),
+        rpe: parseNum(s.rpe),
+        rest_seconds: s.rest.trim() ? parseRest(s.rest) : (b.planned?.rest_seconds ?? null),
+        duration_seconds: s.duration.trim() ? parseDuration(s.duration) : null,
+        distance_km: parseNum(s.distance),
+        set_type: s.set_type || null,
+      }));
+    return kcalForSets({ name: b.exercise_name, movement_type: b.cardio ? "Cardio" : null }, sets, weight.kg);
+  }
 
   /** Lance le chrono de repos après la série si (temps prévu, sinon 90 s). */
   function startRest(bi: number, si: number) {
@@ -590,6 +608,7 @@ export function WorkoutEditor({
                     </span>
                     <ExerciseSheetButton exerciseId={b.exercise_id} name={b.exercise_name} className="-mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-royal-300 transition hover:bg-royal-600/15" />
                   </p>
+                  <KcalChip kcal={blockKcal(b)} className="mt-1" title={`Dépense estimée — ${weightNote(weight)} (visible uniquement par toi)`} />
                   {b.planned && (
                     <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-royal-300">
                       <Target className="h-3.5 w-3.5" />
@@ -882,6 +901,12 @@ export function WorkoutEditor({
         <div className="sticky bottom-20 z-20 space-y-2 lg:bottom-4">
           <RestTimer request={rest} onDone={finishRest} onClose={() => setRest(null)} />
         <div className="flex justify-end gap-2 rounded-2xl border border-ink-700 bg-ink-900/95 p-3 backdrop-blur">
+          <KcalChip
+            strong
+            className="mr-auto self-center sm:mr-0"
+            kcal={blocks.reduce((n, b) => n + blockKcal(b), 0)}
+            title={`Dépense estimée de la séance — ${weightNote(weight)} (visible uniquement par toi)`}
+          />
           <span className="mr-auto hidden self-center text-sm text-ink-400 sm:block">
             {blocks.length} exercice(s) ·{" "}
             {blocks.reduce((n, b) => n + b.sets.filter((s) => s.load || s.reps || s.duration || s.distance).length, 0)} série(s) renseignée(s)
