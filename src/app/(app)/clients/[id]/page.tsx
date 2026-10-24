@@ -20,6 +20,7 @@ import {
   Trash2,
   TrendingUp,
   Utensils,
+  Activity,
 } from "lucide-react";
 import {
   Badge,
@@ -42,6 +43,7 @@ import { MeasurementsPanel } from "@/components/MeasurementsPanel";
 import { ReviewsPanel } from "@/components/ReviewsPanel";
 import { IntakePanel } from "@/components/IntakePanel";
 import { NutritionPanel } from "@/components/NutritionPanel";
+import { StepsPanel } from "@/components/StepsPanel";
 import { ClientAppointments } from "@/components/AgendaWidgets";
 import { useToast } from "@/components/toast";
 import { getSupabase } from "@/lib/supabase/client";
@@ -57,6 +59,7 @@ const TABS = [
   { key: "poids", label: "Perte de poids", icon: <Scale className="h-3.5 w-3.5" /> },
   { key: "mensurations", label: "Mensurations", icon: <Ruler className="h-3.5 w-3.5" /> },
   { key: "nutrition", label: "Nutrition", icon: <Utensils className="h-3.5 w-3.5" /> },
+  { key: "pas", label: "Pas", icon: <Activity className="h-3.5 w-3.5" /> },
   { key: "bilans", label: "Bilans", icon: <ClipboardList className="h-3.5 w-3.5" /> },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
@@ -167,6 +170,7 @@ function ClientDetail() {
         {tab === "poids" && <WeightTracker clientId={client.id} />}
         {tab === "mensurations" && <MeasurementsPanel clientId={client.id} />}
         {tab === "nutrition" && <NutritionPanel clientId={client.id} />}
+        {tab === "pas" && <StepsPanel clientId={client.id} />}
         {tab === "bilans" && (
           <div className="space-y-6">
             <IntakePanel client={client} />
