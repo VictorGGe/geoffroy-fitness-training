@@ -7,6 +7,7 @@ import { getSupabase } from "@/lib/supabase/client";
 import { getMyClientProfile } from "@/lib/data";
 import { MyAppointments } from "@/components/AgendaWidgets";
 import { StepsPanel } from "@/components/StepsPanel";
+import { EnergyPanel } from "@/components/EnergyPanel";
 import { unwrap, useAsync } from "@/lib/hooks";
 import { fmtDate, fmtRelative, GOAL_LABELS, LEVEL_LABELS } from "@/lib/format";
 import type { Program, WorkoutLog } from "@/lib/types";
@@ -44,6 +45,7 @@ export default function ClientHomePage() {
 
       <MyAppointments />
       {data.me && <StepsPanel clientId={data.me.id} compact />}
+      {data.me && <EnergyPanel clientId={data.me.id} compact />}
 
       <Card title="Mes programmes" padded={false}>
         {active.length === 0 ? (
