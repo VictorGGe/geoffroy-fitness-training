@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowLeft, ArrowUp, History, Plus, Target, Timer, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, Check, History, Plus, Target, Timer, Trash2, X } from "lucide-react";
 import { RestTimer, unlockAudio, type RestRequest } from "./RestTimer";
 import { Badge, Button, Card, ConfirmDialog, Field, Input, LoadingBlock, PageHeader, Select, Textarea, cn } from "./ui";
 import { ExercisePicker } from "./ExercisePicker";
@@ -49,6 +49,10 @@ interface SetRow {
   rest: string;
   comment: string;
   set_type: SetType | "";
+  /** Valeurs pré-remplies automatiquement (dernière séance ou programme), pas encore modifiées */
+  auto?: boolean;
+  /** Série cochée comme faite (affichage) */
+  done?: boolean;
 }
 interface Planned {
   sets: number | null;
@@ -91,6 +95,38 @@ const emptySet = (set_type: SetType | "" = "travail"): SetRow => ({
 const uid = () => Math.random().toString(36).slice(2, 10);
 const str = (v: unknown) => (num(v) === null ? "" : String(num(v)).replace(".", ","));
 
+/** « 8-10 » → « 8 » (on part du bas de la fourchette), « 5 » → « 5 », texte libre → vide. */
+function lowReps(r: string | null | undefined): string {
+  const m = String(r ?? "").match(/\d+/);
+  return m ? m[0] : "";
+}
+
+/**
+ * Pré-remplit les séries encore automatiques : valeurs de la dernière séance
+ * (pour garder la progression), sinon celles prévues par le programme.
+ */
+function prefillBlock(b: Block, last: LastPerf | undefined): Block {
+  if (!b.sets.some((s) => s.auto)) return b;
+  return {
+    ...b,
+    sets: b.sets.map((s, i) => {
+      if (!s.auto) return s;
+      // Les échauffements gardent les valeurs du programme ; les séries de travail reprennent la dernière séance
+      const warm = s.set_type === "echauffement";
+      const wi = b.sets.slice(0, i).filter((x) => x.set_type !== "echauffement").length;
+      const ls = !warm && last?.sets.length ? (last.sets[wi] ?? last.sets[last.sets.length - 1]) : undefined;
+      if (b.cardio) {
+        const dur = ls?.duration ?? b.planned?.duration_seconds ?? null;
+        const dist = ls?.distance ?? b.planned?.distance_km ?? null;
+        return { ...s, duration: dur != null ? durationInput(dur) : "", distance: dist != null ? str(dist) : "" };
+      }
+      const load = ls?.load ?? b.planned?.load_kg ?? null;
+      const reps = ls?.reps != null ? String(ls.reps) : lowReps(b.planned?.reps);
+      return { ...s, load: load != null ? str(load) : "", reps };
+    }),
+  };
+}
+
 type LastPerf = {
   date: string;
   sets: { load: number | null; reps: number | null; rpe: number | null; duration: number | null; distance: number | null; hr: number | null }[];
@@ -125,6 +161,8 @@ export function WorkoutEditor({
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [original, setOriginal] = useState<WorkoutLog | null>(null);
   const [lastPerf, setLastPerf] = useState<Record<string, LastPerf>>({});
+  const lastPerfRef = useRef<Record<string, LastPerf>>({});
+  const [details, setDetails] = useState<Set<string>>(new Set());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -309,10 +347,31 @@ export function WorkoutEditor({
         sets: Array.from({ length: Math.max(1, Math.min(pe.sets ?? 1, 12)) }, () => ({
           ...emptySet(pe.set_type ?? "travail"),
           rest: pe.rest_seconds != null ? String(pe.rest_seconds) : "",
+          auto: true,
         })),
-      })),
+      })).map((b) => prefillBlock(b, b.exercise_id ? lastPerfRef.current[b.exercise_id] : undefined)),
     );
   }, [sessionId, programSessions, editing]);
+
+  // Séance suivante du programme proposée automatiquement (rotation A → B → C → A…)
+  useEffect(() => {
+    if (editing || sessionId || !programId || !clientId || !programSessions.length) return;
+    if (programSessions.length === 1) return setSessionId(programSessions[0].id);
+    sb.from("workout_logs")
+      .select("program_session_id")
+      .eq("client_id", clientId)
+      .eq("program_id", programId)
+      .not("program_session_id", "is", null)
+      .order("performed_on", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        const i = programSessions.findIndex((x) => x.id === data?.program_session_id);
+        setSessionId(programSessions[(i + 1) % programSessions.length].id);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [programSessions, programId, clientId, editing]);
 
   // Vidéos des exercices (pour les séances déjà enregistrées)
   const [videos, setVideos] = useState<Record<string, string | null>>({});
@@ -361,20 +420,48 @@ export function WorkoutEditor({
             })),
         };
       }
+      lastPerfRef.current = res;
       setLastPerf(res);
+      if (!logId) setBlocks((bs) => bs.map((b) => (b.exercise_id && res[b.exercise_id] ? prefillBlock(b, res[b.exercise_id]) : b)));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, exerciseIds.join(","), logId]);
 
   function updateSet(bi: number, si: number, patch: Partial<SetRow>) {
-    setBlocks((bs) => bs.map((b, i) => (i !== bi ? b : { ...b, sets: b.sets.map((s, j) => (j === si ? { ...s, ...patch } : s)) })));
+    const edits = ["load", "reps", "duration", "distance"].some((k) => k in patch);
+    setBlocks((bs) =>
+      bs.map((b, i) => (i !== bi ? b : { ...b, sets: b.sets.map((s, j) => (j === si ? { ...s, ...patch, ...(edits ? { auto: false } : {}) } : s)) })),
+    );
+  }
+  /** Ajuste la charge de toutes les séries de travail d'un exercice (progression). */
+  function bumpLoad(bi: number, delta: number) {
+    setBlocks((bs) =>
+      bs.map((b, i) =>
+        i !== bi
+          ? b
+          : {
+              ...b,
+              sets: b.sets.map((s) => {
+                const v = parseNum(s.load);
+                if (v === null || s.set_type === "echauffement") return s;
+                return { ...s, load: str(Math.max(0, Math.round((v + delta) * 100) / 100)), auto: false };
+              }),
+            },
+      ),
+    );
+  }
+  function toggleDone(bi: number, si: number) {
+    const s = blocks[bi]?.sets[si];
+    if (!s) return;
+    updateSet(bi, si, { done: !s.done });
+    if (!s.done) startRest(bi, si);
   }
   function addSet(bi: number) {
     setBlocks((bs) =>
       bs.map((b, i) => {
         if (i !== bi) return b;
         const last = b.sets[b.sets.length - 1];
-        return { ...b, sets: [...b.sets, last ? { ...last, comment: "" } : emptySet()] };
+        return { ...b, sets: [...b.sets, last ? { ...last, comment: "", done: false, auto: false } : emptySet()] };
       }),
     );
   }
@@ -528,7 +615,7 @@ export function WorkoutEditor({
           </Link>
         }
         title={editing ? "Modifier la séance réalisée" : "Saisir une séance réalisée"}
-        subtitle="Les valeurs prévues par le programme sont rappelées en bleu ; saisissez les performances réellement obtenues."
+        subtitle="Les charges et répétitions de la dernière séance (ou du programme) sont déjà remplies : ajuste si besoin, coche chaque série, puis enregistre."
         actions={
           editing ? (
             <Button variant="ghost" className="text-red-300 hover:bg-red-500/10" onClick={() => setConfirmDelete(true)}>
@@ -664,221 +751,253 @@ export function WorkoutEditor({
                   </Button>
                 </div>
               </header>
-              <div className="overflow-x-auto px-2 py-2 sm:px-4">
-                {b.cardio ? (
-                <table className="w-full min-w-[560px] text-sm">
-                  <thead>
-                    <tr className="text-[11px] uppercase tracking-wider text-ink-500">
-                      <th className="w-8 py-1.5 text-left font-medium">#</th>
-                      <th className="py-1.5 text-left font-medium">Durée</th>
-                      <th className="py-1.5 text-left font-medium">Distance (km)</th>
-                      <th className="py-1.5 text-left font-medium">Intensité</th>
-                      <th className="py-1.5 text-left font-medium">FC moy.</th>
-                      <th className="py-1.5 text-left font-medium">FC max</th>
-                      <th className="py-1.5 text-left font-medium">RPE</th>
-                      <th className="w-8" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {b.sets.map((s, si) => (
-                      <tr key={si}>
-                        <td className="py-1 pr-2 font-semibold tabular-nums text-ink-400">{si + 1}</td>
-                        <td className="py-1 pr-2">
-                          <input
-                            className="input-sm w-20"
-                            value={s.duration}
-                            placeholder={b.planned?.duration_seconds != null ? durationInput(b.planned.duration_seconds) : "min"}
-                            onChange={(e) => updateSet(bi, si, { duration: e.target.value })}
-                            aria-label="Durée"
-                          />
-                        </td>
-                        <td className="py-1 pr-2">
-                          <input
-                            inputMode="decimal"
-                            className="input-sm w-20"
-                            value={s.distance}
-                            placeholder={b.planned?.distance_km != null ? str(b.planned.distance_km) : ""}
-                            onChange={(e) => updateSet(bi, si, { distance: e.target.value })}
-                            aria-label="Distance"
-                          />
-                        </td>
-                        <td className="py-1 pr-2">
-                          <input
-                            className="input-sm w-32"
-                            value={s.intensity}
-                            placeholder={b.planned?.intensity ?? "Zone 2, allure…"}
-                            onChange={(e) => updateSet(bi, si, { intensity: e.target.value })}
-                            maxLength={60}
-                            aria-label="Intensité"
-                          />
-                        </td>
-                        <td className="py-1 pr-2">
-                          <input
-                            inputMode="numeric"
-                            className="input-sm w-16"
-                            value={s.hr_avg}
-                            placeholder={b.planned?.hr_min != null ? String(b.planned.hr_min) : "bpm"}
-                            onChange={(e) => updateSet(bi, si, { hr_avg: e.target.value })}
-                            aria-label="FC moyenne"
-                          />
-                        </td>
-                        <td className="py-1 pr-2">
-                          <input
-                            inputMode="numeric"
-                            className="input-sm w-16"
-                            value={s.hr_max}
-                            placeholder={b.planned?.hr_max != null ? String(b.planned.hr_max) : "bpm"}
-                            onChange={(e) => updateSet(bi, si, { hr_max: e.target.value })}
-                            aria-label="FC max"
-                          />
-                        </td>
-                        <td className="py-1 pr-2">
-                          <input
-                            inputMode="decimal"
-                            className="input-sm w-14"
-                            value={s.rpe}
-                            placeholder={b.planned?.rpe != null ? str(b.planned.rpe) : ""}
-                            onChange={(e) => updateSet(bi, si, { rpe: e.target.value })}
-                            aria-label="RPE"
-                          />
-                        </td>
-                        <td className="whitespace-nowrap py-1 text-right">
-                          <button
-                            onClick={() => startRest(bi, si)}
-                            className="rounded-md p-1 text-ink-400 hover:bg-ink-750 hover:text-royal-300"
-                            aria-label={`Lancer la récupération après le bloc ${si + 1}`}
-                            title="Lancer le chrono de récupération"
-                          >
-                            <Timer className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => removeSet(bi, si)}
-                            className="rounded-md p-1 text-ink-500 hover:bg-ink-750 hover:text-red-300"
-                            aria-label="Supprimer le bloc"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                ) : (
-                <table className="w-full min-w-[520px] text-sm">
-                  <thead>
-                    <tr className="text-[11px] uppercase tracking-wider text-ink-500">
-                      <th className="w-8 py-1.5 text-left font-medium">#</th>
-                      <th className="py-1.5 text-left font-medium">Type</th>
-                      <th className="py-1.5 text-left font-medium">Charge (kg)</th>
-                      <th className="py-1.5 text-left font-medium">Reps</th>
-                      <th className="py-1.5 text-left font-medium">RPE</th>
-                      <th className="py-1.5 text-left font-medium">RIR</th>
-                      <th className="py-1.5 text-left font-medium">Repos (s)</th>
-                      <th className="w-16 py-1.5 text-right font-medium">1RM est.</th>
-                      <th className="w-8" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {b.sets.map((s, si) => {
-                      const e1 = estimate1RM(parseNum(s.load), parseNum(s.reps));
-                      return (
-                        <tr key={si} className={cn(s.set_type === "echauffement" && "opacity-70")}>
-                          <td className="py-1 pr-2 font-semibold tabular-nums text-ink-400">{si + 1}</td>
-                          <td className="py-1 pr-2">
-                            <select
-                              value={s.set_type}
-                              onChange={(e) => updateSet(bi, si, { set_type: e.target.value as SetType })}
-                              className="input-sm w-[112px]"
-                            >
-                              <option value="">—</option>
-                              {Object.entries(SET_TYPE_LABELS).map(([k, v]) => (
-                                <option key={k} value={k}>
-                                  {v}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="py-1 pr-2">
-                            <input
-                              inputMode="decimal"
-                              className="input-sm w-20"
-                              value={s.load}
-                              placeholder={b.planned?.load_kg != null ? str(b.planned.load_kg) : ""}
-                              onChange={(e) => updateSet(bi, si, { load: e.target.value })}
-                            />
-                          </td>
-                          <td className="py-1 pr-2">
-                            <input
-                              inputMode="numeric"
-                              className="input-sm w-16"
-                              value={s.reps}
-                              placeholder={b.planned?.reps ?? ""}
-                              onChange={(e) => updateSet(bi, si, { reps: e.target.value })}
-                            />
-                          </td>
-                          <td className="py-1 pr-2">
-                            <input
-                              inputMode="decimal"
-                              className="input-sm w-14"
-                              value={s.rpe}
-                              placeholder={b.planned?.rpe != null ? str(b.planned.rpe) : ""}
-                              onChange={(e) => updateSet(bi, si, { rpe: e.target.value })}
-                            />
-                          </td>
-                          <td className="py-1 pr-2">
-                            <input
-                              inputMode="numeric"
-                              className="input-sm w-14"
-                              value={s.rir}
-                              placeholder={b.planned?.rir != null ? String(b.planned.rir) : ""}
-                              onChange={(e) => updateSet(bi, si, { rir: e.target.value })}
-                            />
-                          </td>
-                          <td className="py-1 pr-2">
-                            <input inputMode="numeric" className="input-sm w-16" value={s.rest} onChange={(e) => updateSet(bi, si, { rest: e.target.value })} />
-                          </td>
-                          <td className="py-1 pr-2 text-right tabular-nums text-ink-400">{e1 ? fmtNum(e1) : "—"}</td>
-                          <td className="whitespace-nowrap py-1 text-right">
-                            <button
-                              onClick={() => startRest(bi, si)}
-                              className={cn(
-                                "rounded-md p-1 hover:bg-ink-750",
-                                rest?.blockKey === b.key && rest.si === si ? "text-royal-300" : "text-ink-400 hover:text-royal-300",
-                              )}
-                              aria-label={`Lancer le repos après la série ${si + 1}`}
-                              title="Lancer le chrono de repos"
-                            >
-                              <Timer className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => removeSet(bi, si)}
-                              className="rounded-md p-1 text-ink-500 hover:bg-ink-750 hover:text-red-300"
-                              aria-label="Supprimer la série"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </td>
+              <div className={cn("px-2 py-2 sm:px-4", details.has(b.key) && "overflow-x-auto")}>
+                {(() => {
+                  const more = details.has(b.key);
+                  const doneBtn = (si: number, done?: boolean) => (
+                    <td className="whitespace-nowrap py-1 text-right">
+                      <button
+                        onClick={() => toggleDone(bi, si)}
+                        className={cn(
+                          "inline-flex h-9 w-9 items-center justify-center rounded-lg border transition",
+                          done ? "border-emerald-400 bg-emerald-500/20 text-emerald-300" : "border-ink-600 text-ink-500 hover:border-emerald-400 hover:text-emerald-300",
+                        )}
+                        aria-label={`${b.cardio ? "Bloc" : "Série"} ${si + 1} faite`}
+                        aria-pressed={!!done}
+                        title="Série faite (lance le chrono de repos)"
+                      >
+                        <Check className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => removeSet(bi, si)}
+                        className="ml-1 rounded-md p-1 text-ink-500 hover:bg-ink-750 hover:text-red-300"
+                        aria-label={b.cardio ? "Supprimer le bloc" : "Supprimer la série"}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </td>
+                  );
+                  return b.cardio ? (
+                    <table className={cn("w-full text-sm", more && "min-w-[560px]")}>
+                      <thead>
+                        <tr className="text-[11px] uppercase tracking-wider text-ink-500">
+                          <th className="w-7 py-1.5 text-left font-medium">#</th>
+                          <th className="py-1.5 text-left font-medium">Durée</th>
+                          <th className="py-1.5 text-left font-medium">Distance (km)</th>
+                          {more && (
+                            <>
+                              <th className="py-1.5 text-left font-medium">Intensité</th>
+                              <th className="py-1.5 text-left font-medium">FC moy.</th>
+                              <th className="py-1.5 text-left font-medium">FC max</th>
+                              <th className="py-1.5 text-left font-medium">RPE</th>
+                            </>
+                          )}
+                          <th className="py-1.5 text-right font-medium">Fait</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                )}
+                      </thead>
+                      <tbody>
+                        {b.sets.map((s, si) => (
+                          <tr key={si} className={cn(s.done && "bg-emerald-500/5")}>
+                            <td className="py-1 pr-2 font-semibold tabular-nums text-ink-400">{si + 1}</td>
+                            <td className="py-1 pr-2">
+                              <input
+                                className="input-sm w-20"
+                                value={s.duration}
+                                placeholder={b.planned?.duration_seconds != null ? durationInput(b.planned.duration_seconds) : "min"}
+                                onChange={(e) => updateSet(bi, si, { duration: e.target.value })}
+                                aria-label="Durée"
+                              />
+                            </td>
+                            <td className="py-1 pr-2">
+                              <input
+                                inputMode="decimal"
+                                className="input-sm w-20"
+                                value={s.distance}
+                                placeholder={b.planned?.distance_km != null ? str(b.planned.distance_km) : "km"}
+                                onChange={(e) => updateSet(bi, si, { distance: e.target.value })}
+                                aria-label="Distance"
+                              />
+                            </td>
+                            {more && (
+                              <>
+                                <td className="py-1 pr-2">
+                                  <input
+                                    className="input-sm w-32"
+                                    value={s.intensity}
+                                    placeholder={b.planned?.intensity ?? "Zone 2, allure…"}
+                                    onChange={(e) => updateSet(bi, si, { intensity: e.target.value })}
+                                    maxLength={60}
+                                    aria-label="Intensité"
+                                  />
+                                </td>
+                                <td className="py-1 pr-2">
+                                  <input
+                                    inputMode="numeric"
+                                    className="input-sm w-16"
+                                    value={s.hr_avg}
+                                    placeholder={b.planned?.hr_min != null ? String(b.planned.hr_min) : "bpm"}
+                                    onChange={(e) => updateSet(bi, si, { hr_avg: e.target.value })}
+                                    aria-label="FC moyenne"
+                                  />
+                                </td>
+                                <td className="py-1 pr-2">
+                                  <input
+                                    inputMode="numeric"
+                                    className="input-sm w-16"
+                                    value={s.hr_max}
+                                    placeholder={b.planned?.hr_max != null ? String(b.planned.hr_max) : "bpm"}
+                                    onChange={(e) => updateSet(bi, si, { hr_max: e.target.value })}
+                                    aria-label="FC max"
+                                  />
+                                </td>
+                                <td className="py-1 pr-2">
+                                  <input
+                                    inputMode="decimal"
+                                    className="input-sm w-14"
+                                    value={s.rpe}
+                                    placeholder={b.planned?.rpe != null ? str(b.planned.rpe) : ""}
+                                    onChange={(e) => updateSet(bi, si, { rpe: e.target.value })}
+                                    aria-label="RPE"
+                                  />
+                                </td>
+                              </>
+                            )}
+                            {doneBtn(si, s.done)}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <table className={cn("w-full text-sm", more && "min-w-[600px]")}>
+                      <thead>
+                        <tr className="text-[11px] uppercase tracking-wider text-ink-500">
+                          <th className="w-7 py-1.5 text-left font-medium">#</th>
+                          {more && <th className="py-1.5 text-left font-medium">Type</th>}
+                          <th className="py-1.5 text-left font-medium">Charge (kg)</th>
+                          <th className="py-1.5 text-left font-medium">Reps</th>
+                          {more && (
+                            <>
+                              <th className="py-1.5 text-left font-medium">RPE</th>
+                              <th className="py-1.5 text-left font-medium">RIR</th>
+                              <th className="py-1.5 text-left font-medium">Repos (s)</th>
+                              <th className="w-16 py-1.5 text-right font-medium">1RM est.</th>
+                            </>
+                          )}
+                          <th className="py-1.5 text-right font-medium">Fait</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {b.sets.map((s, si) => {
+                          const e1 = estimate1RM(parseNum(s.load), parseNum(s.reps));
+                          return (
+                            <tr key={si} className={cn(s.set_type === "echauffement" && "opacity-70", s.done && "bg-emerald-500/5")}>
+                              <td className="py-1 pr-2 font-semibold tabular-nums text-ink-400">
+                                {si + 1}
+                                {s.set_type === "echauffement" && !more && <span className="ml-0.5 text-[10px] font-normal text-amber-300">éch.</span>}
+                              </td>
+                              {more && (
+                                <td className="py-1 pr-2">
+                                  <select
+                                    value={s.set_type}
+                                    onChange={(e) => updateSet(bi, si, { set_type: e.target.value as SetType })}
+                                    className="input-sm w-[112px]"
+                                    aria-label="Type de série"
+                                  >
+                                    <option value="">—</option>
+                                    {Object.entries(SET_TYPE_LABELS).map(([k, v]) => (
+                                      <option key={k} value={k}>
+                                        {v}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                              )}
+                              <td className="py-1 pr-2">
+                                <input
+                                  inputMode="decimal"
+                                  className="input-sm w-20 text-center text-base font-semibold tabular-nums sm:w-24"
+                                  value={s.load}
+                                  placeholder={b.planned?.load_kg != null ? str(b.planned.load_kg) : "kg"}
+                                  onChange={(e) => updateSet(bi, si, { load: e.target.value })}
+                                  aria-label={`Charge série ${si + 1}`}
+                                />
+                              </td>
+                              <td className="py-1 pr-2">
+                                <input
+                                  inputMode="numeric"
+                                  className="input-sm w-16 text-center text-base font-semibold tabular-nums sm:w-20"
+                                  value={s.reps}
+                                  placeholder={b.planned?.reps ?? "reps"}
+                                  onChange={(e) => updateSet(bi, si, { reps: e.target.value })}
+                                  aria-label={`Répétitions série ${si + 1}`}
+                                />
+                              </td>
+                              {more && (
+                                <>
+                                  <td className="py-1 pr-2">
+                                    <input
+                                      inputMode="decimal"
+                                      className="input-sm w-14"
+                                      value={s.rpe}
+                                      placeholder={b.planned?.rpe != null ? str(b.planned.rpe) : ""}
+                                      onChange={(e) => updateSet(bi, si, { rpe: e.target.value })}
+                                      aria-label="RPE"
+                                    />
+                                  </td>
+                                  <td className="py-1 pr-2">
+                                    <input
+                                      inputMode="numeric"
+                                      className="input-sm w-14"
+                                      value={s.rir}
+                                      placeholder={b.planned?.rir != null ? String(b.planned.rir) : ""}
+                                      onChange={(e) => updateSet(bi, si, { rir: e.target.value })}
+                                      aria-label="RIR"
+                                    />
+                                  </td>
+                                  <td className="py-1 pr-2">
+                                    <input inputMode="numeric" className="input-sm w-16" value={s.rest} onChange={(e) => updateSet(bi, si, { rest: e.target.value })} aria-label="Repos" />
+                                  </td>
+                                  <td className="py-1 pr-2 text-right tabular-nums text-ink-400">{e1 ? fmtNum(e1) : "—"}</td>
+                                </>
+                              )}
+                              {doneBtn(si, s.done)}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  );
+                })()}
               </div>
-              <div className="flex items-center justify-between border-t border-ink-750 px-4 py-2">
+              <div className="flex flex-wrap items-center gap-2 border-t border-ink-750 px-3 py-2 sm:px-4">
                 <Button size="sm" variant="ghost" onClick={() => addSet(bi)} className="text-royal-300">
-                  <Plus className="h-4 w-4" /> {b.cardio ? "Ajouter un bloc" : "Ajouter une série"}
+                  <Plus className="h-4 w-4" /> {b.cardio ? "Bloc" : "Série"}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => {
-                    const lastFilled = b.sets.reduce((acc, s, i) => (s.load || s.reps || s.duration || s.distance ? i : acc), 0);
-                    startRest(bi, lastFilled);
-                  }}
+                {!b.cardio && b.sets.some((x) => parseNum(x.load) !== null) && (
+                  <span className="inline-flex items-center gap-1">
+                    <Button size="sm" variant="secondary" onClick={() => bumpLoad(bi, -2.5)} aria-label="Toutes les séries −2,5 kg">
+                      −2,5 kg
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => bumpLoad(bi, 2.5)} aria-label="Toutes les séries +2,5 kg">
+                      +2,5 kg
+                    </Button>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDetails((d) => {
+                      const n = new Set(d);
+                      if (n.has(b.key)) n.delete(b.key);
+                      else n.add(b.key);
+                      return n;
+                    })
+                  }
+                  className="ml-auto text-xs font-medium text-ink-400 hover:text-royal-300"
+                  aria-expanded={details.has(b.key)}
                 >
-                  <Timer className="h-4 w-4" /> Repos{b.planned?.rest_seconds != null ? ` ${fmtRest(b.planned.rest_seconds)}` : ""}
-                </Button>
+                  {details.has(b.key) ? "− Moins de détails" : b.cardio ? "+ Intensité, FC, RPE" : "+ RPE, RIR, repos"}
+                </button>
               </div>
             </section>
           );
@@ -900,7 +1019,7 @@ export function WorkoutEditor({
 
         <div className="sticky bottom-20 z-20 space-y-2 lg:bottom-4">
           <RestTimer request={rest} onDone={finishRest} onClose={() => setRest(null)} />
-        <div className="flex justify-end gap-2 rounded-2xl border border-ink-700 bg-ink-900/95 p-3 backdrop-blur">
+        <div className="flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-ink-700 bg-ink-900/95 p-3 backdrop-blur">
           <KcalChip
             strong
             className="mr-auto self-center sm:mr-0"
@@ -936,7 +1055,7 @@ export function WorkoutEditor({
                 video_url: e.video_url,
                 cardio,
                 planned: null,
-                sets: cardio ? [emptySet()] : [emptySet(), emptySet(), emptySet()],
+                sets: (cardio ? [emptySet()] : [emptySet(), emptySet(), emptySet()]).map((x) => ({ ...x, auto: true })),
               };
             }),
           ])
