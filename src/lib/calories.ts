@@ -45,7 +45,7 @@ function cardioMet(name: string): number {
   if (has(name, "corde a sauter")) return 11.8;
   if (has(name, "marche incline")) return 6.0;
   if (has(name, "marche")) return 3.8;
-  if (has(name, "course", "tapis", "running", "footing")) return 9.8;
+  if (has(name, "course", "tapis", "running", "footing", "sprint")) return 9.8;
   if (has(name, "stepper", "escalier")) return 8.8;
   if (has(name, "assault", "air bike", "airbike")) return 8.5;
   if (has(name, "skierg", "ski erg")) return 7.5;
@@ -81,7 +81,7 @@ function rpeFactor(rpe: number | null | undefined): number {
 export function isCardio(ex: ExLike): boolean {
   return (
     isCardioExercise({ movement_type: ex.movement_type ?? null, muscle_group: ex.muscle_group ?? null }) ||
-    /\b(course|tapis|rameur|velo|elliptique|natation|corde a sauter|skierg|stepper|marche|footing|running)\b/.test(normalize(ex.name ?? ""))
+    /\b(course|tapis|rameur|velo|elliptique|natation|corde a sauter|skierg|stepper|marche|footing|running|sprint)\b/.test(normalize(ex.name ?? ""))
   );
 }
 
@@ -91,7 +91,7 @@ export function kcalForSets(ex: ExLike, sets: SetLike[], kg: number): number {
   let total = 0;
   if (isCardio(ex)) {
     const met = cardioMet(name);
-    const running = has(name, "course", "tapis", "running", "footing") && !has(name, "marche");
+    const running = has(name, "course", "tapis", "running", "footing", "sprint") && !has(name, "marche");
     for (const s of sets) {
       const dur = num(s.duration_seconds) ?? 0;
       const km = num(s.distance_km) ?? 0;
