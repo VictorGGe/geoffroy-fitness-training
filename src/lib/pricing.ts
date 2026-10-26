@@ -1,5 +1,7 @@
 /**
  * Grille tarifaire Victor Training.
+ * Base : 315 € / mois pour 2 séances par semaine (≈ 39,40 € la séance), les autres formules
+ * sont proportionnelles. Engagement : −5 % (3 mois), −10 % (6 mois), −15 % (12 mois).
  * Pour modifier un prix ou une formule, il suffit de changer les valeurs ci-dessous.
  */
 
@@ -17,9 +19,9 @@ export interface Formula {
 }
 
 const COMMITMENTS = [
-  { months: 3, discount: 10 },
-  { months: 6, discount: 15 },
-  { months: 12, discount: 20 },
+  { months: 3, discount: 5 },
+  { months: 6, discount: 10 },
+  { months: 12, discount: 15 },
 ];
 
 const FULL = [
@@ -39,25 +41,25 @@ export const FORMULAS: Formula[] = [
     badge: { label: "Séance à l'unité", tone: "gold" },
     features: ["Aucun engagement", "Idéal pour tester le coaching", "Plan adapté à ton niveau", "Application de suivi"],
   },
-  { key: "basic", name: "Basic", rhythm: "1 séance / semaine", price: 156, unit: "mois", features: FULL, commitments: COMMITMENTS },
+  { key: "basic", name: "Basic", rhythm: "1 séance / semaine", price: 158, unit: "mois", features: FULL, commitments: COMMITMENTS },
   {
     key: "progression",
     name: "Progression",
     rhythm: "2 séances / semaine",
-    price: 312,
+    price: 315,
     unit: "mois",
     badge: { label: "Populaire", tone: "blue" },
     features: FULL,
     commitments: COMMITMENTS,
     highlight: "popular",
   },
-  { key: "performance", name: "Performance", rhythm: "3 séances / semaine", price: 468, unit: "mois", features: FULL, commitments: COMMITMENTS },
-  { key: "expert", name: "Expert", rhythm: "4 séances / semaine", price: 625, unit: "mois", features: FULL, commitments: COMMITMENTS },
+  { key: "performance", name: "Performance", rhythm: "3 séances / semaine", price: 473, unit: "mois", features: FULL, commitments: COMMITMENTS },
+  { key: "expert", name: "Expert", rhythm: "4 séances / semaine", price: 630, unit: "mois", features: FULL, commitments: COMMITMENTS },
   {
     key: "ultimate",
     name: "Ultimate",
     rhythm: "5 séances / semaine",
-    price: 780,
+    price: 788,
     unit: "mois",
     badge: { label: "Premium", tone: "premium" },
     features: FULL.slice(0, 3),
@@ -66,8 +68,9 @@ export const FORMULAS: Formula[] = [
   },
 ];
 
+/** Prix remisé, arrondi à l'euro pour une grille lisible. */
 export function discounted(price: number, discount: number): number {
-  return Math.round(price * (1 - discount / 100) * 100) / 100;
+  return Math.round(price * (1 - discount / 100));
 }
 
 export function fmtEuro(v: number): string {
