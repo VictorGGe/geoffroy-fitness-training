@@ -44,6 +44,7 @@ interface SetRow {
   intensity: string;
   hr_avg: string;
   hr_max: string;
+  incline: string;
   rpe: string;
   rir: string;
   rest: string;
@@ -67,6 +68,7 @@ interface Planned {
   intensity?: string | null;
   hr_min?: number | null;
   hr_max?: number | null;
+  incline_pct?: number | null;
 }
 interface Block {
   key: string;
@@ -86,6 +88,7 @@ const emptySet = (set_type: SetType | "" = "travail"): SetRow => ({
   intensity: "",
   hr_avg: "",
   hr_max: "",
+  incline: "",
   rpe: "",
   rir: "",
   rest: "",
@@ -118,7 +121,8 @@ function prefillBlock(b: Block, last: LastPerf | undefined): Block {
       if (b.cardio) {
         const dur = ls?.duration ?? b.planned?.duration_seconds ?? null;
         const dist = ls?.distance ?? b.planned?.distance_km ?? null;
-        return { ...s, duration: dur != null ? durationInput(dur) : "", distance: dist != null ? str(dist) : "" };
+        const inc = ls?.incline ?? b.planned?.incline_pct ?? null;
+        return { ...s, duration: dur != null ? durationInput(dur) : "", distance: dist != null ? str(dist) : "", incline: inc != null ? str(inc) : "" };
       }
       const load = ls?.load ?? b.planned?.load_kg ?? null;
       const reps = ls?.reps != null ? String(ls.reps) : lowReps(b.planned?.reps);
@@ -129,7 +133,7 @@ function prefillBlock(b: Block, last: LastPerf | undefined): Block {
 
 type LastPerf = {
   date: string;
-  sets: { load: number | null; reps: number | null; rpe: number | null; duration: number | null; distance: number | null; hr: number | null }[];
+  sets: { load: number | null; reps: number | null; rpe: number | null; duration: number | null; distance: number | null; hr: number | null; incline: number | null }[];
 };
 
 export function WorkoutEditor({
@@ -181,6 +185,8 @@ export function WorkoutEditor({
         duration_seconds: s.duration.trim() ? parseDuration(s.duration) : null,
         distance_km: parseNum(s.distance),
         set_type: s.set_type || null,
+        intensity: s.intensity || b.planned?.intensity || null,
+        incline_pct: parseNum(s.incline),
       }));
     return kcalForSets({ name: b.exercise_name, movement_type: b.cardio ? "Cardio" : null }, sets, weight.kg);
   }
@@ -261,6 +267,7 @@ export function WorkoutEditor({
                       intensity: s.planned_intensity ?? null,
                       hr_min: s.planned_hr_min ?? null,
                       hr_max: s.planned_hr_max ?? null,
+                      incline_pct: num(s.planned_incline_pct),
                     }
                   : null,
               sets: [],
@@ -284,6 +291,7 @@ export function WorkoutEditor({
             intensity: s.intensity ?? "",
             hr_avg: s.hr_avg?.toString() ?? "",
             hr_max: s.hr_max?.toString() ?? "",
+            incline: str(s.incline_pct),
             rpe: str(s.rpe),
             rir: s.rir?.toString() ?? "",
             rest: s.rest_seconds != null ? String(s.rest_seconds) : "",
@@ -343,6 +351,7 @@ export function WorkoutEditor({
           intensity: pe.intensity ?? null,
           hr_min: pe.hr_min ?? null,
           hr_max: pe.hr_max ?? null,
+          incline_pct: num(pe.incline_pct),
         },
         sets: Array.from({ length: Math.max(1, Math.min(pe.sets ?? 1, 12)) }, () => ({
           ...emptySet(pe.set_type ?? "travail"),
@@ -395,7 +404,7 @@ export function WorkoutEditor({
     (async () => {
       const { data } = await sb
         .from("workout_sets")
-        .select("exercise_id, load_kg, reps, rpe, duration_seconds, distance_km, hr_avg, set_number, set_type, workout_log_id, workout_logs!inner(client_id, performed_on)")
+        .select("*, workout_logs!inner(client_id, performed_on)")
         .eq("workout_logs.client_id", clientId)
         .in("exercise_id", exerciseIds)
         .order("set_number");
@@ -417,6 +426,7 @@ export function WorkoutEditor({
               duration: r.duration_seconds ?? null,
               distance: num(r.distance_km),
               hr: r.hr_avg ?? null,
+              incline: num(r.incline_pct),
             })),
         };
       }
@@ -428,7 +438,7 @@ export function WorkoutEditor({
   }, [clientId, exerciseIds.join(","), logId]);
 
   function updateSet(bi: number, si: number, patch: Partial<SetRow>) {
-    const edits = ["load", "reps", "duration", "distance"].some((k) => k in patch);
+    const edits = ["load", "reps", "duration", "distance", "incline"].some((k) => k in patch);
     setBlocks((bs) =>
       bs.map((b, i) => (i !== bi ? b : { ...b, sets: b.sets.map((s, j) => (j === si ? { ...s, ...patch, ...(edits ? { auto: false } : {}) } : s)) })),
     );
@@ -497,12 +507,14 @@ export function WorkoutEditor({
         const distance = parseNum(s.distance);
         const hrAvg = parseNum(s.hr_avg);
         const hrMax = parseNum(s.hr_max);
-        const filled = [s.load, s.reps, s.rpe, s.rir, s.comment, s.duration, s.distance, s.intensity, s.hr_avg, s.hr_max].some(
+        const filled = [s.load, s.reps, s.rpe, s.rir, s.comment, s.duration, s.distance, s.intensity, s.hr_avg, s.hr_max, s.incline].some(
           (v) => v.trim() !== "",
         );
         if (!filled) continue;
         if (s.duration.trim() && (duration === null || duration > 86400)) return setError(`${b.exercise_name} : durée invalide (ex. 30, 32:30, 1h15).`);
         if (s.distance.trim() && (distance === null || distance < 0 || distance > 1000)) return setError(`${b.exercise_name} : distance invalide (km).`);
+        const inc = parseNum(s.incline);
+        if (s.incline.trim() && (inc === null || inc < 0 || inc > 40)) return setError(`${b.exercise_name} : inclinaison entre 0 et 40 %.`);
         if (s.hr_avg.trim() && (hrAvg === null || !Number.isInteger(hrAvg) || hrAvg < 30 || hrAvg > 250)) return setError(`${b.exercise_name} : FC moyenne invalide (30 à 250 bpm).`);
         if (s.hr_max.trim() && (hrMax === null || !Number.isInteger(hrMax) || hrMax < 30 || hrMax > 250)) return setError(`${b.exercise_name} : FC max invalide (30 à 250 bpm).`);
         if (s.load && (load === null || load < 0 || load > 1000)) return setError(`${b.exercise_name} : charge invalide.`);
@@ -525,6 +537,9 @@ export function WorkoutEditor({
           planned_intensity: b.planned?.intensity ?? null,
           planned_hr_min: b.planned?.hr_min ?? null,
           planned_hr_max: b.planned?.hr_max ?? null,
+          // colonnes d'inclinaison envoyées seulement si utilisées (fichier SQL de l'inclinaison)
+          ...(b.planned?.incline_pct != null ? { planned_incline_pct: b.planned.incline_pct } : {}),
+          ...(parseNum(s.incline) !== null ? { incline_pct: parseNum(s.incline) } : {}),
           duration_seconds: duration,
           distance_km: distance,
           intensity: emptyToNull(s.intensity),
@@ -754,6 +769,8 @@ export function WorkoutEditor({
               <div className={cn("px-2 py-2 sm:px-4", details.has(b.key) && "overflow-x-auto")}>
                 {(() => {
                   const more = details.has(b.key);
+                  // Colonne inclinaison pour le tapis (ou si une pente est prévue / déjà saisie)
+                  const tm = /tapis|inclin/i.test(b.exercise_name) || b.planned?.incline_pct != null || b.sets.some((x) => x.incline.trim() !== "");
                   const doneBtn = (si: number, done?: boolean) => (
                     <td className="whitespace-nowrap py-1 text-right">
                       <button
@@ -784,6 +801,7 @@ export function WorkoutEditor({
                           <th className="w-7 py-1.5 text-left font-medium">#</th>
                           <th className="py-1.5 text-left font-medium">Durée</th>
                           <th className="py-1.5 text-left font-medium">Distance (km)</th>
+                          {tm && <th className="py-1.5 text-left font-medium">Incl. %</th>}
                           {more && (
                             <>
                               <th className="py-1.5 text-left font-medium">Intensité</th>
@@ -818,6 +836,18 @@ export function WorkoutEditor({
                                 aria-label="Distance"
                               />
                             </td>
+                            {tm && (
+                              <td className="py-1 pr-2">
+                                <input
+                                  inputMode="decimal"
+                                  className="input-sm w-16"
+                                  value={s.incline}
+                                  placeholder={b.planned?.incline_pct != null ? str(b.planned.incline_pct) : "0"}
+                                  onChange={(e) => updateSet(bi, si, { incline: e.target.value })}
+                                  aria-label="Inclinaison"
+                                />
+                              </td>
+                            )}
                             {more && (
                               <>
                                 <td className="py-1 pr-2">

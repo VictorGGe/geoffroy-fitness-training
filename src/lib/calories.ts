@@ -26,9 +26,31 @@ export interface SetLike {
   duration_seconds?: number | null;
   distance_km?: number | null;
   set_type?: string | null;
+  intensity?: string | null;
+  incline_pct?: number | null;
 }
 
 export const DEFAULT_WEIGHT = 75;
+
+/** Vitesse lue dans un texte libre : « 9 km/h », « 5,5 kmh ». */
+export function speedFromText(t: string | null | undefined): number | null {
+  const m = String(t ?? "").match(/(\d+(?:[.,]\d+)?)\s*km\s*\/?\s*h/i);
+  const v = m ? Number(m[1].replace(",", ".")) : NaN;
+  return Number.isFinite(v) && v > 0 && v < 30 ? v : null;
+}
+
+/**
+ * Tapis : équations de l'ACSM (vitesse + pente), plus précises qu'un MET fixe.
+ *   marche  (< 7,5 km/h) : VO2 = 0,1·v + 1,8·v·pente + 3,5
+ *   course  (≥ 7,5 km/h) : VO2 = 0,2·v + 0,9·v·pente + 3,5
+ * v en m/min, VO2 en ml/kg/min ; ~5 kcal par litre d'oxygène.
+ */
+export function treadmillKcal(speedKmh: number, inclinePct: number, kg: number, seconds: number): number {
+  const v = (speedKmh * 1000) / 60;
+  const g = Math.max(0, inclinePct) / 100;
+  const vo2 = speedKmh < 7.5 ? 0.1 * v + 1.8 * v * g + 3.5 : 0.2 * v + 0.9 * v * g + 3.5;
+  return ((vo2 * kg) / 1000) * 5 * (seconds / 60);
+}
 const DEFAULT_REST = 90;
 const SECONDS_PER_REP = 3.5;
 const SECONDS_PER_SET_NO_REPS = 40;
@@ -92,9 +114,18 @@ export function kcalForSets(ex: ExLike, sets: SetLike[], kg: number): number {
   if (isCardio(ex)) {
     const met = cardioMet(name);
     const running = has(name, "course", "tapis", "running", "footing", "sprint") && !has(name, "marche");
+    const treadmill = has(name, "tapis");
     for (const s of sets) {
       const dur = num(s.duration_seconds) ?? 0;
       const km = num(s.distance_km) ?? 0;
+      const incline = num(s.incline_pct) ?? 0;
+      // Tapis (ou marche/course avec pente) : vitesse connue → calcul selon vitesse et inclinaison
+      const speed = dur > 0 && km > 0 ? km / (dur / 3600) : speedFromText(s.intensity);
+      const time = dur > 0 ? dur : km > 0 && speed ? (km / speed) * 3600 : 0;
+      if ((treadmill || incline > 0) && speed && time > 0) {
+        total += treadmillKcal(speed, incline, kg, time);
+        continue;
+      }
       if (running && km > 0) total += 1.036 * kg * km * (dur > 0 && km / (dur / 3600) < 7 ? 0.55 / 1.036 : 1);
       else if (dur > 0) total += kcalFor(met, kg, dur) * rpeFactor(num(s.rpe));
     }
@@ -123,6 +154,8 @@ export function kcalForPlanned(
     duration_seconds?: number | null;
     distance_km?: number | null;
     set_type?: string | null;
+    intensity?: string | null;
+    incline_pct?: number | null;
   },
   ex: ExLike,
   kg: number,
@@ -138,6 +171,8 @@ export function kcalForPlanned(
     duration_seconds: num(pe.duration_seconds),
     distance_km: num(pe.distance_km),
     set_type: pe.set_type,
+    intensity: pe.intensity ?? null,
+    incline_pct: num(pe.incline_pct),
   };
   return kcalForSets(ex, Array.from({ length: n }, () => one), kg);
 }

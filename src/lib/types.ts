@@ -85,6 +85,7 @@ export interface ProgramExercise {
   intensity?: string | null;
   hr_min?: number | null;
   hr_max?: number | null;
+  incline_pct?: number | null;
   exercises?: (Pick<Exercise, "id" | "name" | "muscle_group" | "equipment"> &
     Partial<Pick<Exercise, "description" | "execution_cues" | "common_mistakes" | "variations" | "video_url" | "movement_type">>) | null;
 }
@@ -125,11 +126,13 @@ export interface WorkoutSet {
   intensity?: string | null;
   hr_avg?: number | null;
   hr_max?: number | null;
+  incline_pct?: number | null;
   planned_duration_seconds?: number | null;
   planned_distance_km?: number | null;
   planned_intensity?: string | null;
   planned_hr_min?: number | null;
   planned_hr_max?: number | null;
+  planned_incline_pct?: number | null;
 }
 
 export interface WeightGoal {

@@ -162,10 +162,12 @@ const isCardioSet = (s: WorkoutSet) =>
 
 function CardioSetsTable({ sets }: { sets: WorkoutSet[] }) {
   const p = sets[0];
+  const incl = sets.some((s) => num(s.incline_pct) !== null);
   const plan = [
     p.planned_duration_seconds != null ? fmtDuration(p.planned_duration_seconds) : null,
     p.planned_distance_km != null ? `${fmtNum(p.planned_distance_km, 2)} km` : null,
     p.planned_intensity,
+    num(p.planned_incline_pct) ? `Incl. ${fmtNum(p.planned_incline_pct)} %` : null,
     fmtHrRange(p.planned_hr_min, p.planned_hr_max) ? `FC ${fmtHrRange(p.planned_hr_min, p.planned_hr_max)}` : null,
   ].filter(Boolean);
   return (
@@ -177,6 +179,7 @@ function CardioSetsTable({ sets }: { sets: WorkoutSet[] }) {
             <th className="py-1 text-left font-medium">Bloc</th>
             <th className="py-1 text-left font-medium">Durée</th>
             <th className="py-1 text-left font-medium">Distance</th>
+            {incl && <th className="py-1 text-left font-medium">Incl.</th>}
             <th className="py-1 text-left font-medium">Intensité</th>
             <th className="py-1 text-left font-medium">FC moy.</th>
             <th className="py-1 text-left font-medium">FC max</th>
@@ -189,6 +192,7 @@ function CardioSetsTable({ sets }: { sets: WorkoutSet[] }) {
               <td className="py-1.5">{s.set_number}</td>
               <td className="py-1.5 font-medium text-white">{s.duration_seconds != null ? fmtDuration(s.duration_seconds) : "—"}</td>
               <td className="py-1.5">{s.distance_km != null ? `${fmtNum(s.distance_km, 2)} km` : "—"}</td>
+              {incl && <td className="py-1.5">{num(s.incline_pct) !== null ? `${fmtNum(s.incline_pct)} %` : "—"}</td>}
               <td className="py-1.5">{s.intensity ?? "—"}</td>
               <td className="py-1.5">{s.hr_avg != null ? `${s.hr_avg} bpm` : "—"}</td>
               <td className="py-1.5">{s.hr_max != null ? `${s.hr_max} bpm` : "—"}</td>

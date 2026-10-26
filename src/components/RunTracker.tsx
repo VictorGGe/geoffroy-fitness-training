@@ -12,6 +12,7 @@ import { getMyClientProfile } from "@/lib/data";
 import { errorMessage, fullName, parseNum } from "@/lib/format";
 import { activityOf, estimateCalories, fmtClock, fmtKm, fmtPace, useRunTracker, type Pt, type RunMode, type Split } from "@/lib/run";
 import { deleteRun, listRuns, saveRun, type RunRow } from "@/lib/runData";
+import { treadmillKcal } from "@/lib/calories";
 import type { Client } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -127,6 +128,7 @@ export function RunPage() {
   const [feeling, setFeeling] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [manualKm, setManualKm] = useState("");
+  const [manualIncline, setManualIncline] = useState("");
   const [saving, setSaving] = useState(false);
   const t = useRunTracker({ voice });
   const { data } = t;
@@ -211,12 +213,19 @@ export function RunPage() {
 
   const w = parseNum(weight);
   const distanceM = data.status === "finished" && data.mode === "tapis" ? (parseNum(manualKm) ?? 0) * 1000 : data.distanceM;
-  const calories = estimateCalories(distanceM, t.elapsed, w);
+  const incline = data.mode === "tapis" ? parseNum(manualIncline) : null;
+  const tapisSpeed = data.mode === "tapis" && t.elapsed > 0 ? distanceM / 1000 / (t.elapsed / 3600) : 0;
+  // Tapis : calcul selon la vitesse et l'inclinaison (équations ACSM)
+  const calories =
+    data.mode === "tapis" && w && tapisSpeed > 2 && tapisSpeed < 25
+      ? Math.round(treadmillKcal(tapisSpeed, incline ?? 0, w, t.elapsed))
+      : estimateCalories(distanceM, t.elapsed, w);
   const avgPace = distanceM >= 50 ? t.elapsed / (distanceM / 1000) : null;
 
   async function save() {
     if (!clientId) return toast.error("Choisis le client.");
     if (data.mode === "tapis" && !(parseNum(manualKm) && parseNum(manualKm)! > 0)) return toast.error("Indique la distance affichée par le tapis.");
+    if (manualIncline.trim() && (incline === null || incline < 0 || incline > 40)) return toast.error("Inclinaison : entre 0 et 40 %.");
     setSaving(true);
     try {
       const { warning } = await saveRun({
@@ -232,6 +241,7 @@ export function RunPage() {
         route: data.route,
         feeling,
         note: note.trim() || null,
+        inclinePct: incline,
       });
       if (warning) toast.error(warning);
       else toast.success("Course enregistrée 💪");
@@ -239,6 +249,7 @@ export function RunPage() {
       setFeeling(null);
       setNote("");
       setManualKm("");
+      setManualIncline("");
       listRuns(clientId).then(setRuns);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -329,6 +340,9 @@ export function RunPage() {
           <Card>
             <Field label="Distance affichée par le tapis (km)" required>
               <Input value={manualKm} onChange={(e) => setManualKm(e.target.value)} inputMode="decimal" placeholder="5,2" autoFocus aria-label="Distance du tapis en km" />
+            </Field>
+            <Field label="Inclinaison moyenne (%)" hint="Facultatif — 0 si le tapis était à plat" className="mt-3">
+              <Input value={manualIncline} onChange={(e) => setManualIncline(e.target.value)} inputMode="decimal" placeholder="0" aria-label="Inclinaison du tapis" />
             </Field>
           </Card>
         )}
@@ -512,7 +526,7 @@ export function RunPage() {
                         <p className="truncate text-xs text-ink-400">
                           {new Date(r.started_at).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })} · {fmtPace(pace)} /km
                           {r.calories ? ` · ${r.calories} kcal` : ""}
-                          {r.mode === "tapis" ? " · tapis" : ""}
+                          {r.mode === "tapis" ? ` · tapis${r.incline_pct ? ` ${String(r.incline_pct).replace(".", ",")} %` : ""}` : ""}
                         </p>
                       </div>
                     </button>
@@ -561,7 +575,10 @@ function RunDetail({ run, onClose, onDeleted }: { run: RunRow; onClose: () => vo
         }
       >
         <div className="space-y-4">
-          <p className="text-sm capitalize text-ink-400">{title}</p>
+          <p className="text-sm text-ink-400">
+            <span className="capitalize">{title}</span>
+            {run.incline_pct ? ` · inclinaison ${String(run.incline_pct).replace(".", ",")} %` : ""}
+          </p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="Temps" value={fmtClock(run.duration_s)} icon={<Timer className="h-3.5 w-3.5" />} />
             <Stat label="Distance" value={fmtKm(run.distance_m)} unit="km" icon={<MapPin className="h-3.5 w-3.5" />} />

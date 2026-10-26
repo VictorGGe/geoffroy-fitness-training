@@ -307,11 +307,13 @@ export function cardioSummary(pe: {
   intensity?: string | null;
   hr_min?: number | null;
   hr_max?: number | null;
+  incline_pct?: number | null;
 }): string[] {
   const parts: string[] = [];
   if (pe.duration_seconds != null) parts.push(fmtDuration(pe.duration_seconds));
   if (num(pe.distance_km) !== null) parts.push(`${fmtNum(pe.distance_km, 2)} km`);
   if (pe.intensity) parts.push(pe.intensity);
+  if (num(pe.incline_pct)) parts.push(`Incl. ${fmtNum(pe.incline_pct)} %`);
   const hr = fmtHrRange(pe.hr_min, pe.hr_max);
   if (hr) parts.push(`FC ${hr}`);
   return parts;

@@ -870,6 +870,7 @@ function ParamsEditor({
     distance: num(pe.distance_km)?.toString().replace(".", ",") ?? "",
     intensity: pe.intensity ?? "",
     hr: pe.hr_min != null ? (pe.hr_max != null && pe.hr_max !== pe.hr_min ? `${pe.hr_min}-${pe.hr_max}` : String(pe.hr_min)) : "",
+    incline: num(pe.incline_pct)?.toString().replace(".", ",") ?? "",
   });
   const [cardio, setCardio] = useState(
     isCardioExercise(pe.exercises) || pe.duration_seconds != null || num(pe.distance_km) !== null || pe.hr_min != null || !!pe.intensity,
@@ -901,6 +902,8 @@ function ParamsEditor({
     if (f.distance.trim() && (distance === null || distance < 0 || distance > 1000)) return setErr("Distance invalide (en km).");
     const hr = parseHrRange(f.hr);
     if (hr === "invalid") return setErr("FC cible : ex. 140 ou 130-150 (bpm).");
+    const incline = parseNum(f.incline);
+    if (f.incline.trim() && (incline === null || incline < 0 || incline > 40)) return setErr("Inclinaison : entre 0 et 40 %.");
     setSaving(true);
     try {
       await onSave({
@@ -919,6 +922,8 @@ function ParamsEditor({
         intensity: emptyToNull(f.intensity),
         hr_min: hr[0],
         hr_max: hr[1],
+        // envoyé seulement si utilisé (la colonne n'existe qu'après le fichier SQL de l'inclinaison)
+        ...(incline !== null || pe.incline_pct != null ? { incline_pct: incline } : {}),
       });
     } finally {
       setSaving(false);
@@ -949,6 +954,9 @@ function ParamsEditor({
         </Field>
         <Field label="Distance (km)">
           <Input inputMode="decimal" value={f.distance} onChange={set("distance")} placeholder="5" />
+        </Field>
+        <Field label="Inclinaison (%)" hint="Tapis : pente">
+          <Input inputMode="decimal" value={f.incline} onChange={set("incline")} placeholder="0" aria-label="Inclinaison" />
         </Field>
         <Field label="FC cible (bpm)" hint="Ex. 130-150">
           <Input value={f.hr} onChange={set("hr")} placeholder="130-150" />

@@ -18,6 +18,7 @@ export interface RunRow {
   route: Pt[][];
   feeling: number | null;
   note: string | null;
+  incline_pct?: number | null;
 }
 
 export interface SaveRunInput {
@@ -33,6 +34,7 @@ export interface SaveRunInput {
   route: Pt[][];
   feeling: number | null;
   note: string | null;
+  inclinePct?: number | null;
 }
 
 function localDate(ms: number): string {
@@ -74,6 +76,7 @@ export async function saveRun(r: SaveRunInput): Promise<{ warning: string | null
     intensity: pace ? `Allure ${fmtPace(pace)} /km` : null,
     rpe: r.feeling,
     comment: [r.calories ? `${r.calories} kcal` : null, r.note].filter(Boolean).join(" · ").slice(0, 1000) || null,
+    ...(r.inclinePct != null ? { incline_pct: r.inclinePct } : {}),
   });
   if (set.error) {
     await sb.from("workout_logs").delete().eq("id", log.data.id);
@@ -94,6 +97,7 @@ export async function saveRun(r: SaveRunInput): Promise<{ warning: string | null
     route: r.route,
     feeling: r.feeling,
     note: r.note,
+    ...(r.inclinePct != null ? { incline_pct: r.inclinePct } : {}),
   });
   if (run.error) {
     return {
