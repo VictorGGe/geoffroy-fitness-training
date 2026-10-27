@@ -80,6 +80,8 @@ async function runChecks(): Promise<Check[]> {
           { label: "Agenda", file: "20261017000007_agenda.sql", probes: ["appointments?select=id,starts_at"] },
           { label: "Course à pied", file: "20261022000009_runs.sql", probes: ["runs?select=id,route"] },
           { label: "Podomètre", file: "20261024000010_steps.sql", probes: ["daily_steps?select=day,steps", "step_goals?select=daily_goal"] },
+          { label: "Inclinaison du tapis", file: "20261026000011_treadmill_incline.sql", probes: ["runs?select=incline_pct"] },
+          { label: "Finances", file: "20261027000012_finances.sql", probes: ["invoices?select=id,amount", "expenses?select=id", "finance_settings?select=charge_rate,net_goal"] },
         ];
         const base = url.trim().replace(/\/$/, "");
         // "yes" = présent, "no" = absent, "unknown" = serveur momentanément indisponible
