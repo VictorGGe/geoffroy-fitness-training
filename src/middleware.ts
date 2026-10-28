@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_CONFIG_OK, SUPABASE_KEY, SUPABASE_URL } from "@/lib/env";
 
 /** Routes accessibles sans être connecté. Tout le reste est privé. */
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/auth/callback", "/reset-password", "/diagnostic"];
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/auth/callback", "/reset-password", "/diagnostic", "/cross-training", "/api/ct/public"];
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
