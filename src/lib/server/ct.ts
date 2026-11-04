@@ -96,7 +96,6 @@ export function createCheckout(p: {
   return stripe<StripeSession>("POST", "checkout/sessions", {
     mode: "payment",
     locale: "fr",
-    "payment_method_types[0]": "card",
     customer_email: p.email,
     client_reference_id: p.registrationId,
     "metadata[registration_id]": p.registrationId,
