@@ -2,6 +2,16 @@
  * Cross training en petit groupe — éléments partagés (page publique, page coach, serveur).
  */
 
+/**
+ * Lien de paiement Stripe (Payment Link) utilisé tant que la clé secrète Stripe
+ * n'est pas configurée dans Vercel. Ce lien est public : il peut figurer dans le code.
+ * Les liens « test_ » n'encaissent pas d'argent réel.
+ */
+export const CT_PAYMENT_LINK = "https://buy.stripe.com/test_bJe6oJ0hD4z02Lk0PPfAc00";
+
+/** Marqueur enregistré quand un participant ouvre le lien de paiement (paiement à vérifier). */
+export const PAY_LINK_MARK = "lien";
+
 export const CT_TZ = "Europe/Paris";
 export const CT_DEFAULTS = { min: 3, max: 6, duration: 60, price: 15, location: "Basic-Fit Essey-lès-Nancy" };
 

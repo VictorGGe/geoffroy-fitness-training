@@ -4,7 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { clean, SUPABASE_URL } from "@/lib/env";
 import { workingServiceRoleKey } from "@/lib/env-server";
 import { createSupabaseServer } from "@/lib/supabase/server";
-import { fmtPrice, fmtSlotFull, type CtRegistration, type CtSlot } from "@/lib/crossTraining";
+import { CT_PAYMENT_LINK, fmtPrice, fmtSlotFull, type CtRegistration, type CtSlot } from "@/lib/crossTraining";
 
 /* ------------------------------------------------------------------ */
 /* Accès base (clé secrète, côté serveur uniquement)                    */
@@ -35,6 +35,17 @@ const STRIPE_API = (process.env.STRIPE_API_BASE || "https://api.stripe.com").rep
 export function stripeKey(): string {
   const k = clean(process.env.STRIPE_SECRET_KEY, "STRIPE_SECRET_KEY");
   return /^(sk|rk)_(test|live)_\w{10,}$/.test(k) ? k : "";
+}
+
+/** Lien de paiement Stripe (variable STRIPE_PAYMENT_LINK dans Vercel, sinon celui du code). */
+export function paymentLink(): string {
+  const v = clean(process.env.STRIPE_PAYMENT_LINK, "STRIPE_PAYMENT_LINK") || CT_PAYMENT_LINK;
+  return /^https:\/\/(buy\.stripe\.com|checkout\.stripe\.com)\/\S+$/.test(v) ? v : "";
+}
+
+/** « auto » : paiement confirmé automatiquement ; « lien » : paiement à confirmer par le coach. */
+export function payMode(): "auto" | "lien" | null {
+  return stripeKey() ? "auto" : paymentLink() ? "lien" : null;
 }
 
 export function stripeMode(): "live" | "test" | null {
@@ -284,7 +295,7 @@ export async function markPaid(admin: SupabaseClient, reg: CtRegistration, slot:
 /** Vérifie auprès de Stripe si une session de paiement a été réglée. */
 export async function syncStripePayment(admin: SupabaseClient, reg: CtRegistration, slot: CtSlot, sessionId?: string | null): Promise<boolean> {
   const id = sessionId || reg.stripe_session_id;
-  if (!id || !stripeKey() || reg.status !== "inscrit") return false;
+  if (!id || !id.startsWith("cs_") || !stripeKey() || reg.status !== "inscrit") return false;
   try {
     const s = await getCheckout(id);
     if (s.payment_status === "paid" && s.metadata?.registration_id === reg.id) {

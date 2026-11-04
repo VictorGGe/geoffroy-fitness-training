@@ -1,5 +1,5 @@
-import { activeCount, adminClient, createCheckout, originOf, personalLink, stripeKey } from "@/lib/server/ct";
-import { fmtSlotFull, type CtRegistration, type CtSlot } from "@/lib/crossTraining";
+import { activeCount, adminClient, createCheckout, originOf, paymentLink, personalLink, stripeKey } from "@/lib/server/ct";
+import { fmtSlotFull, PAY_LINK_MARK, type CtRegistration, type CtSlot } from "@/lib/crossTraining";
 import { fail, NOT_READY, ok, readJson, str, UUID } from "../_shared";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const token = str((await readJson(req)).token, 40);
   if (!UUID.test(token)) return fail("Lien invalide.", 404);
-  if (!stripeKey()) return fail("Le paiement par carte n'est pas encore activé. Le coach te contactera pour le règlement.", 503);
+  if (!stripeKey() && !paymentLink()) return fail("Le paiement par carte n'est pas encore activé. Le coach te contactera pour le règlement.", 503);
   const admin = await adminClient();
   if (!admin) return fail(NOT_READY, 503);
 
@@ -24,6 +24,16 @@ export async function POST(req: Request) {
   const count = await activeCount(admin, s.id);
   if (count < s.min_people) {
     return fail(`Le paiement s'ouvrira dès que ${s.min_people} personnes seront inscrites (actuellement ${count}).`, 409);
+  }
+
+  // Sans clé secrète : lien de paiement Stripe, le coach confirme ensuite le paiement
+  if (!stripeKey()) {
+    await admin.from("ct_registrations").update({ stripe_session_id: PAY_LINK_MARK }).eq("id", r.id);
+    const u = new URL(paymentLink());
+    u.searchParams.set("client_reference_id", r.id);
+    u.searchParams.set("prefilled_email", r.email);
+    u.searchParams.set("locale", "fr");
+    return ok({ url: u.toString() });
   }
 
   const link = personalLink(originOf(req), r.token);

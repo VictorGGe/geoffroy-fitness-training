@@ -1,4 +1,4 @@
-import { adminClient, currentCoach, mailConfigured, stripeMode } from "@/lib/server/ct";
+import { adminClient, currentCoach, mailConfigured, payMode, stripeMode } from "@/lib/server/ct";
 import { fail, ok } from "../../public/_shared";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +10,7 @@ export async function GET() {
   return ok({
     coachId: c.user.id,
     stripe: stripeMode(),
+    payMode: payMode(),
     email: mailConfigured(),
     server: !!(await adminClient()),
   });

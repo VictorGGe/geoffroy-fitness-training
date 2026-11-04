@@ -22,6 +22,8 @@ interface Me {
   };
   count: number;
   cardPayment: boolean;
+  payMode?: "auto" | "lien" | null;
+  payStarted?: boolean;
 }
 
 function Inner() {
@@ -182,7 +184,9 @@ function Inner() {
     icon = <CreditCard className="h-7 w-7" />;
     title = "Le groupe est confirmé\u00a0!";
     text = me.cardPayment
-      ? `Il y a ${count} inscrits : tu peux régler ta place maintenant pour la garantir.`
+      ? me.payMode === "lien" && me.payStarted
+        ? "Tu as ouvert la page de paiement. Si tu as bien payé, le coach confirme ta place très vite (tu n'as rien d'autre à faire)."
+        : `Il y a ${count} inscrits : tu peux régler ta place maintenant pour la garantir.`
       : `Il y a ${count} inscrits. Le coach te contactera pour le règlement.`;
   } else {
     tone = "amber";
@@ -222,7 +226,7 @@ function Inner() {
 
         {!cancelled && r.status === "inscrit" && confirmed && me.cardPayment && !past && (
           <Button size="lg" className="mt-5 w-full" loading={paying} onClick={pay}>
-            <Lock className="h-4 w-4" /> Payer {fmtPrice(s.price)} par carte
+            <Lock className="h-4 w-4" /> {me.payMode === "lien" && me.payStarted ? "Rouvrir la page de paiement" : `Payer ${fmtPrice(s.price)} par carte`}
           </Button>
         )}
         {!cancelled && r.status === "inscrit" && !confirmed && (

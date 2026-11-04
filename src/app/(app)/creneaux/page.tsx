@@ -29,6 +29,7 @@ import { unwrap, useAsync } from "@/lib/hooks";
 import { errorMessage } from "@/lib/format";
 import {
   CT_DEFAULTS,
+  PAY_LINK_MARK,
   fmtPrice,
   fmtSlotDay,
   fmtSlotFull,
@@ -42,6 +43,7 @@ import {
 interface Config {
   coachId: string;
   stripe: "live" | "test" | null;
+  payMode?: "auto" | "lien" | null;
   email: boolean;
   server: boolean;
 }
@@ -221,7 +223,16 @@ function SetupStatus({ config }: { config: Config | null }) {
   if (!config) return null;
   const items = [
     { ok: config.server, label: "Inscriptions en ligne", off: "clé SUPABASE_SERVICE_ROLE_KEY manquante dans Vercel" },
-    { ok: !!config.stripe, label: config.stripe === "test" ? "Paiement carte (mode test)" : "Paiement par carte", off: "Stripe pas encore connecté" },
+    {
+      ok: !!config.payMode,
+      label:
+        config.payMode === "lien"
+          ? "Paiement carte par lien Stripe (à confirmer toi-même)"
+          : config.stripe === "test"
+            ? "Paiement carte automatique (mode test)"
+            : "Paiement carte automatique",
+      off: "Stripe pas encore connecté",
+    },
     { ok: config.email, label: "Emails automatiques", off: "Gmail pas encore connecté" },
   ];
   return (
@@ -395,7 +406,15 @@ function SlotPanel({
                   {r.status === "paye" ? (
                     <Badge tone="green"><Check className="h-3 w-3" /> Payé {r.paid_by === "carte" ? "par carte" : "(manuel)"}</Badge>
                   ) : (
-                    <Badge tone="amber">Pas encore payé</Badge>
+                    r.stripe_session_id === PAY_LINK_MARK ? (
+                      <span title="Cette personne a ouvert le lien de paiement : vérifie dans Stripe puis clique sur « Payé ».">
+                        <Badge tone="blue">
+                          <CreditCard className="h-3 w-3" /> Paiement à vérifier
+                        </Badge>
+                      </span>
+                    ) : (
+                      <Badge tone="amber">Pas encore payé</Badge>
+                    )
                   )}
                   <div className="flex items-center">
                     <a

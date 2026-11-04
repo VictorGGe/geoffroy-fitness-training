@@ -1,5 +1,5 @@
-import { activeCount, adminClient, stripeKey, syncStripePayment } from "@/lib/server/ct";
-import type { CtRegistration, CtSlot } from "@/lib/crossTraining";
+import { activeCount, adminClient, payMode, syncStripePayment } from "@/lib/server/ct";
+import { PAY_LINK_MARK, type CtRegistration, type CtSlot } from "@/lib/crossTraining";
 import { fail, NOT_READY, ok, UUID } from "../_shared";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +48,8 @@ export async function GET(req: Request) {
       status: s.status,
     },
     count,
-    cardPayment: !!stripeKey(),
+    cardPayment: !!payMode(),
+    payMode: payMode(),
+    payStarted: r.stripe_session_id === PAY_LINK_MARK,
   });
 }
