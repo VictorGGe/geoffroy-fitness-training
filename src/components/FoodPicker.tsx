@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Clock, PenLine, ScanLine, Search, ShoppingBasket, Sprout } from "lucide-react";
+import { ArrowLeft, Camera, Clock, PenLine, ScanLine, Search, ShoppingBasket, Sprout } from "lucide-react";
 import { Button, Field, Input, Modal, Spinner } from "./ui";
 import { BarcodeScanner } from "./BarcodeScanner";
+import { MealPhoto } from "./MealPhoto";
 import { useToast } from "./toast";
 import { cn } from "@/lib/cn";
 import { getSupabase } from "@/lib/supabase/client";
@@ -21,7 +22,7 @@ import {
   type Meal,
 } from "@/lib/nutrition";
 
-type Mode = "search" | "scan" | "manual";
+type Mode = "search" | "photo" | "scan" | "manual";
 
 export function Chip({ active, onClick, children, className }: { active: boolean; onClick: () => void; children: React.ReactNode; className?: string }) {
   return (
@@ -339,12 +340,13 @@ export function FoodPicker({
   /* ---------------- Étape 1 : choix de l'aliment ---------------- */
   return (
     <Modal open={open} onClose={onClose} title="Ajouter un aliment" size="lg">
-      <div className="mb-4 grid grid-cols-3 gap-1 rounded-xl border border-ink-700/70 bg-ink-900/80 p-1">
+      <div className="mb-4 grid grid-cols-4 gap-1 rounded-xl border border-ink-700/70 bg-ink-900/80 p-1">
         {(
           [
-            ["search", "Rechercher", Search],
+            ["search", "Chercher", Search],
+            ["photo", "Photo", Camera],
             ["scan", "Scanner", ScanLine],
-            ["manual", "À la main", PenLine],
+            ["manual", "Manuel", PenLine],
           ] as const
         ).map(([k, label, Icon]) => (
           <button
@@ -358,7 +360,7 @@ export function FoodPicker({
               }
             }}
             className={cn(
-              "flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[13px] font-medium transition",
+              "flex flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-[12px] font-medium transition sm:flex-row sm:gap-1.5 sm:text-[13px]",
               mode === k ? "bg-royal-600 text-white" : "text-ink-400 hover:bg-ink-800 hover:text-ink-100",
             )}
           >
@@ -496,6 +498,10 @@ export function FoodPicker({
         ) : (
           <BarcodeScanner key={scanKey} onDetected={onScan} />
         ))}
+
+      {mode === "photo" && (
+        <MealPhoto clientId={clientId} date={date} defaultMeal={defaultMeal} onSaved={onSaved} onDone={onClose} />
+      )}
 
       {mode === "manual" && (
         <form
