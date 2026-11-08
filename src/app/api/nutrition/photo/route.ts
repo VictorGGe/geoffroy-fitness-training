@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Estimation des macros d'un repas à partir d'une photo (Claude, vision).
+ * Estimation des macros d'un repas à partir d'une photo.
+ * Service : Gemini (gratuit, clé GEMINI_API_KEY) ou Claude (payant, clé ANTHROPIC_API_KEY, prioritaire si présente).
  * La photo n'est jamais enregistrée : elle est seulement envoyée pour l'analyse.
  */
 
@@ -21,6 +22,58 @@ function fail(message: string, status = 400) {
 function apiKey(): string {
   const k = clean(process.env.ANTHROPIC_API_KEY, "ANTHROPIC_API_KEY");
   return /^sk-ant-[\w-]{20,}$/.test(k) ? k : "";
+}
+
+/** Gemini (Google) : offre gratuite, utilisée si aucune clé Claude n'est configurée. */
+function geminiKey(): string {
+  const k = clean(process.env.GEMINI_API_KEY, "GEMINI_API_KEY");
+  return /^[\w-]{30,60}$/.test(k) ? k : "";
+}
+const GEMINI_API = (process.env.GEMINI_API_BASE || "https://generativelanguage.googleapis.com").replace(/\/+$/, "");
+
+/** Même structure que l'outil Claude, au format attendu par Gemini. */
+function geminiSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(geminiSchema);
+  if (!schema || typeof schema !== "object") return schema;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (k === "type" && typeof v === "string") out.type = v.toUpperCase();
+    else out[k] = geminiSchema(v);
+  }
+  return out;
+}
+
+async function askGemini(key: string, mime: string, data: string, prompt: string): Promise<{ input?: Record<string, unknown>; error?: Response }> {
+  const model = clean(process.env.GEMINI_MODEL, "GEMINI_MODEL") || "gemini-flash-latest";
+  let res: Response;
+  try {
+    res = await fetch(`${GEMINI_API}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: { "x-goog-api-key": key, "content-type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM.replace("Réponds uniquement avec l'outil enregistrer_repas, en français.", "Réponds uniquement en JSON, en français.") }] },
+        contents: [{ role: "user", parts: [{ inline_data: { mime_type: mime, data } }, { text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json", responseSchema: geminiSchema(TOOL.input_schema), temperature: 0.2 },
+      }),
+      cache: "no-store",
+    });
+  } catch {
+    return { error: fail("Le service d'analyse ne répond pas. Réessaie dans un instant.", 502) };
+  }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.error("[photo-repas/gemini]", res.status, json?.error?.message);
+    if (res.status === 429) return { error: fail("Limite gratuite atteinte pour le moment. Réessaie un peu plus tard (ou demain).", 429) };
+    if (res.status === 400 && /api key/i.test(String(json?.error?.message))) return { error: fail("La clé GEMINI_API_KEY est refusée : vérifie-la dans Vercel.", 502) };
+    if (res.status === 403) return { error: fail("La clé GEMINI_API_KEY est refusée : vérifie-la dans Vercel.", 502) };
+    return { error: fail("L'analyse a échoué. Réessaie avec une autre photo.", 502) };
+  }
+  const text = (json?.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? "").join("");
+  try {
+    return { input: JSON.parse(text) };
+  } catch {
+    return { error: fail("L'analyse a échoué. Réessaie avec une autre photo.", 502) };
+  }
 }
 
 const TOOL = {
@@ -74,11 +127,12 @@ export async function POST(req: Request) {
   if (!user) return fail("Connecte-toi pour analyser une photo.", 401);
 
   const key = apiKey();
-  if (!key) {
+  const gKey = key ? "" : geminiKey();
+  if (!key && !gKey) {
     return fail(
       user.app_metadata?.role === "client"
         ? "L'analyse photo n'est pas encore activée par ton coach."
-        : "L'analyse photo n'est pas encore activée : ajoute la clé ANTHROPIC_API_KEY dans Vercel puis redéploie.",
+        : "L'analyse photo n'est pas encore activée : ajoute la clé GEMINI_API_KEY (gratuite) dans Vercel puis redéploie.",
       503,
     );
   }
@@ -93,6 +147,22 @@ export async function POST(req: Request) {
   if (!m) return fail("Photo invalide.");
   if (m[2].length * 0.75 > MAX_BYTES) return fail("Photo trop lourde.");
   const hint = String(body.hint ?? "").trim().slice(0, 300);
+  const prompt = hint ? `Estime les apports de ce repas. Précisions de la personne : « ${hint} »` : "Estime les apports de ce repas.";
+
+  let input: Record<string, unknown>;
+  if (gKey) {
+    const g = await askGemini(gKey, m[1], m[2], prompt);
+    if (g.error) return g.error;
+    input = g.input ?? {};
+  } else {
+    const c = await askClaude(key, m[1], m[2], prompt);
+    if (c.error) return c.error;
+    input = c.input ?? {};
+  }
+  return NextResponse.json(normalize(input), { headers: { "Cache-Control": "no-store" } });
+}
+
+async function askClaude(key: string, mime: string, data: string, prompt: string): Promise<{ input?: Record<string, unknown>; error?: Response }> {
 
   let res: Response;
   try {
@@ -109,11 +179,8 @@ export async function POST(req: Request) {
           {
             role: "user",
             content: [
-              { type: "image", source: { type: "base64", media_type: m[1], data: m[2] } },
-              {
-                type: "text",
-                text: hint ? `Estime les apports de ce repas. Précisions de la personne : « ${hint} »` : "Estime les apports de ce repas.",
-              },
+              { type: "image", source: { type: "base64", media_type: mime, data } },
+              { type: "text", text: prompt },
             ],
           },
         ],
@@ -121,21 +188,25 @@ export async function POST(req: Request) {
       cache: "no-store",
     });
   } catch {
-    return fail("Le service d'analyse ne répond pas. Réessaie dans un instant.", 502);
+    return { error: fail("Le service d'analyse ne répond pas. Réessaie dans un instant.", 502) };
   }
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     console.error("[photo-repas]", res.status, json?.error?.message);
-    if (res.status === 401) return fail("La clé ANTHROPIC_API_KEY est refusée : vérifie-la dans Vercel.", 502);
-    if (res.status === 429) return fail("Trop d'analyses en même temps. Réessaie dans une minute.", 429);
-    if (/credit|billing|balance/i.test(String(json?.error?.message))) return fail("Crédit épuisé sur le compte Claude (console.anthropic.com).", 502);
-    return fail("L'analyse a échoué. Réessaie avec une autre photo.", 502);
+    if (res.status === 401) return { error: fail("La clé ANTHROPIC_API_KEY est refusée : vérifie-la dans Vercel.", 502) };
+    if (res.status === 429) return { error: fail("Trop d'analyses en même temps. Réessaie dans une minute.", 429) };
+    if (/credit|billing|balance/i.test(String(json?.error?.message))) return { error: fail("Crédit épuisé sur le compte Claude (console.anthropic.com).", 502) };
+    return { error: fail("L'analyse a échoué. Réessaie avec une autre photo.", 502) };
   }
 
   const block = (json.content ?? []).find((c: { type: string; name?: string }) => c.type === "tool_use" && c.name === TOOL.name);
-  const input = block?.input ?? {};
-  const result: PhotoAnalysis = {
+  return { input: block?.input ?? {} };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalize(input: any): PhotoAnalysis {
+  return {
     isFood: input.is_food !== false,
     title: String(input.title ?? "Repas").slice(0, 120),
     confidence: ["haute", "moyenne", "faible"].includes(input.confidence) ? input.confidence : "moyenne",
@@ -152,5 +223,4 @@ export async function POST(req: Request) {
       }))
       .filter((i: { grams: number }) => i.grams > 0),
   };
-  return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
 }
