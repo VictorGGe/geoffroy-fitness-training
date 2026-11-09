@@ -786,7 +786,7 @@ function SortableExerciseRow({
         >
           <GripVertical className="h-4 w-4" />
         </button>
-        <VideoThumb url={pe.exercises?.video_url} title={pe.exercises?.name ?? "Exercice"} size="sm" />
+        <VideoThumb url={pe.exercises?.video_url} audioUrl={pe.exercises?.audio_url} title={pe.exercises?.name ?? "Exercice"} size="sm" />
         <PhotoThumb urls={pe.image_urls} title={pe.exercises?.name ?? "Exercice"} size="sm" />
         <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setEditing((v) => !v)}>
           <div className="flex items-start gap-2">

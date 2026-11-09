@@ -16,7 +16,7 @@ import {
   Select,
 } from "@/components/ui";
 import { ExerciseForm } from "@/components/ExerciseForm";
-import { InlineVideo } from "@/components/ExerciseVideo";
+import { InlineVideo, VoiceNote } from "@/components/ExerciseVideo";
 import { deleteStoredVideo } from "@/lib/videoUpload";
 import { useToast } from "@/components/toast";
 import { getSupabase } from "@/lib/supabase/client";
@@ -182,6 +182,7 @@ export default function ExercisesPage() {
               <p className="mt-3 text-xs text-ink-500">
                 Utilisé dans {e.program_exercises?.[0]?.count ?? 0} séance(s) de programme
                 {e.video_url ? " · vidéo disponible" : ""}
+                {e.audio_url ? " · explication audio" : ""}
               </p>
             </button>
           ))}
@@ -233,7 +234,11 @@ export default function ExercisesPage() {
                 </div>
               ) : null,
             )}
-            {viewing.video_url && <InlineVideo url={viewing.video_url} title={viewing.name} />}
+            {viewing.video_url ? (
+              <InlineVideo url={viewing.video_url} title={viewing.name} audioUrl={viewing.audio_url} />
+            ) : viewing.audio_url ? (
+              <VoiceNote url={viewing.audio_url} />
+            ) : null}
             {!viewing.description && !viewing.execution_cues && !viewing.common_mistakes && !viewing.variations && !viewing.notes && (
               <p className="text-sm text-ink-400">Aucun détail technique renseigné. Cliquez sur « Modifier » pour compléter la fiche.</p>
             )}

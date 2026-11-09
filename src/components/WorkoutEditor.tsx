@@ -77,6 +77,7 @@ interface Block {
   exercise_name: string;
   cardio: boolean;
   video_url?: string | null;
+  audio_url?: string | null;
   photos?: string[] | null;
   planned: Planned | null;
   sets: SetRow[];
@@ -339,6 +340,7 @@ export function WorkoutEditor({
         exercise_id: pe.exercise_id,
         exercise_name: pe.exercises?.name ?? "Exercice",
         video_url: pe.exercises?.video_url ?? null,
+        audio_url: pe.exercises?.audio_url ?? null,
         photos: pe.image_urls ?? null,
         cardio: isCardioExercise(pe.exercises) || pe.duration_seconds != null || num(pe.distance_km) !== null || pe.hr_min != null,
         planned: {
@@ -386,16 +388,22 @@ export function WorkoutEditor({
   }, [programSessions, programId, clientId, editing]);
 
   // Vidéos des exercices (pour les séances déjà enregistrées)
-  const [videos, setVideos] = useState<Record<string, string | null>>({});
+  const [videos, setVideos] = useState<Record<string, { video: string | null; audio: string | null }>>({});
   const idsKey = blocks.map((b) => b.exercise_id).filter(Boolean).join(",");
   useEffect(() => {
     const ids = [...new Set(blocks.filter((b) => b.exercise_id && b.video_url === undefined).map((b) => b.exercise_id as string))];
     if (!ids.length) return;
     sb.from("exercises")
-      .select("id, video_url")
+      .select("*")
       .in("id", ids)
       .then(({ data }) => {
-        if (data) setVideos((v) => ({ ...v, ...Object.fromEntries((data as { id: string; video_url: string | null }[]).map((x) => [x.id, x.video_url])) }));
+        if (data)
+          setVideos((v) => ({
+            ...v,
+            ...Object.fromEntries(
+              (data as { id: string; video_url: string | null; audio_url?: string | null }[]).map((x) => [x.id, { video: x.video_url, audio: x.audio_url ?? null }]),
+            ),
+          }));
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsKey]);
@@ -704,7 +712,11 @@ export function WorkoutEditor({
           return (
             <section key={b.key} className="card overflow-hidden animate-fade-in">
               <header className="flex items-start gap-3 border-b border-ink-700/60 bg-ink-800/60 px-4 py-3">
-                <VideoThumb url={b.video_url ?? (b.exercise_id ? videos[b.exercise_id] : null)} title={b.exercise_name} />
+                <VideoThumb
+                  url={b.video_url ?? (b.exercise_id ? videos[b.exercise_id]?.video : null)}
+                  audioUrl={b.audio_url ?? (b.exercise_id ? videos[b.exercise_id]?.audio : null)}
+                  title={b.exercise_name}
+                />
                 <PhotoThumb urls={b.photos} title={b.exercise_name} />
                 <div className="min-w-0 flex-1">
                   <p className="flex items-start gap-1 font-display text-lg font-semibold uppercase tracking-wide text-white">

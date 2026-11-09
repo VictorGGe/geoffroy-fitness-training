@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { BookOpenText } from "lucide-react";
 import { Badge, LoadingBlock, Modal } from "./ui";
-import { InlineVideo } from "./ExerciseVideo";
+import { InlineVideo, VoiceNote } from "./ExerciseVideo";
 import { getSupabase } from "@/lib/supabase/client";
 import type { Exercise } from "@/lib/types";
 
 type Sheet = Pick<
   Exercise,
-  "id" | "name" | "muscle_group" | "equipment" | "movement_type" | "description" | "execution_cues" | "common_mistakes" | "variations" | "video_url"
+  "id" | "name" | "muscle_group" | "equipment" | "movement_type" | "description" | "execution_cues" | "common_mistakes" | "variations" | "video_url" | "audio_url"
 >;
 
 const SECTIONS: { key: keyof Sheet; label: string }[] = [
@@ -27,7 +27,7 @@ export function ExerciseSheetModal({ exerciseId, name, onClose }: { exerciseId: 
   useEffect(() => {
     getSupabase()
       .from("exercises")
-      .select("id, name, muscle_group, equipment, movement_type, description, execution_cues, common_mistakes, variations, video_url")
+      .select("*")
       .eq("id", exerciseId)
       .maybeSingle()
       .then(({ data, error }) => (error || !data ? setFailed(true) : setEx(data as Sheet)));
@@ -48,7 +48,7 @@ export function ExerciseSheetModal({ exerciseId, name, onClose }: { exerciseId: 
             {ex.equipment && <Badge>{ex.equipment}</Badge>}
             {ex.movement_type && <Badge>{ex.movement_type}</Badge>}
           </div>
-          {ex.video_url && <InlineVideo url={ex.video_url} title={ex.name} />}
+          {ex.video_url ? <InlineVideo url={ex.video_url} title={ex.name} audioUrl={ex.audio_url} /> : ex.audio_url ? <VoiceNote url={ex.audio_url} /> : null}
           {SECTIONS.map(({ key, label }) =>
             ex[key] ? (
               <section key={key}>

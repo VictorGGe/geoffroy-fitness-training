@@ -33,6 +33,8 @@ export interface Exercise {
   common_mistakes: string | null;
   variations: string | null;
   video_url: string | null;
+  /** Explication audio enregistrée par le coach */
+  audio_url?: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -89,7 +91,7 @@ export interface ProgramExercise {
   /** Photos de la machine (prises par le coach) */
   image_urls?: string[] | null;
   exercises?: (Pick<Exercise, "id" | "name" | "muscle_group" | "equipment"> &
-    Partial<Pick<Exercise, "description" | "execution_cues" | "common_mistakes" | "variations" | "video_url" | "movement_type">>) | null;
+    Partial<Pick<Exercise, "description" | "execution_cues" | "common_mistakes" | "variations" | "video_url" | "audio_url" | "movement_type">>) | null;
 }
 
 export interface WorkoutLog {

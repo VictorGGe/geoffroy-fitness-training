@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Field, Input, Modal, Select, Textarea } from "./ui";
 import { useToast } from "./toast";
 import { ExerciseVideoInput } from "./ExerciseVideoInput";
+import { ExerciseAudioInput } from "./ExerciseAudioInput";
 import { deleteStoredVideo } from "@/lib/videoUpload";
 import { getSupabase } from "@/lib/supabase/client";
 import { emptyToNull, EQUIPMENT, errorMessage, MOVEMENT_TYPES, MUSCLE_GROUPS } from "@/lib/format";
@@ -19,6 +20,7 @@ const EMPTY = {
   common_mistakes: "",
   variations: "",
   video_url: "",
+  audio_url: "",
   notes: "",
 };
 
@@ -59,6 +61,7 @@ export function ExerciseForm({
             common_mistakes: exercise.common_mistakes ?? "",
             variations: exercise.variations ?? "",
             video_url: exercise.video_url ?? "",
+            audio_url: exercise.audio_url ?? "",
             notes: exercise.notes ?? "",
           }
         : { ...EMPTY, name: initialName ?? "" },
@@ -88,8 +91,9 @@ export function ExerciseForm({
     setSaving(false);
     if (res.error) return setError(errorMessage(res.error));
     // Nettoyage du stockage : ancienne vidéo remplacée et envois non conservés
-    const kept = (res.data as Exercise).video_url;
-    const stale = [...uploaded.current, ...(exercise?.video_url ? [exercise.video_url] : [])].filter((u) => u !== kept);
+    const saved = res.data as Exercise;
+    const kept = new Set([saved.video_url, saved.audio_url].filter(Boolean));
+    const stale = [...uploaded.current, ...[exercise?.video_url, exercise?.audio_url].filter((u): u is string => !!u)].filter((u) => !kept.has(u));
     uploaded.current = [];
     stale.forEach((u) => deleteStoredVideo(u).catch(() => {}));
     toast.success(exercise ? "Exercice mis à jour." : "Exercice ajouté à la bibliothèque.");
@@ -158,6 +162,17 @@ export function ExerciseForm({
           <ExerciseVideoInput
             value={form.video_url}
             onChange={(url) => setForm((f) => ({ ...f, video_url: url }))}
+            title={form.name}
+            onUploaded={(url) => uploaded.current.push(url)}
+            onBusy={onBusy}
+          />
+        </div>
+        <div className="sm:col-span-3">
+          <p className="label">Explication audio</p>
+          <ExerciseAudioInput
+            value={form.audio_url}
+            onChange={(url) => setForm((f) => ({ ...f, audio_url: url }))}
+            videoUrl={form.video_url}
             title={form.name}
             onUploaded={(url) => uploaded.current.push(url)}
             onBusy={onBusy}

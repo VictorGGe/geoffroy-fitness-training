@@ -50,9 +50,11 @@ export async function preparePhoto(file: File): Promise<Blob> {
 /** Envoie la photo et renvoie son adresse publique. */
 export async function uploadMachinePhoto(file: File, onProgress?: (r: number) => void): Promise<string> {
   const blob = await preparePhoto(file);
-  const { data } = await getSupabase().auth.getUser();
-  if (!data.user) throw new VideoError("Session expirée : reconnecte-toi.");
-  const path = `${data.user.id}/machines/${crypto.randomUUID()}.jpg`;
+  // Session locale (pas d'appel réseau) : l'identifiant sert seulement à choisir le dossier
+  const { data } = await getSupabase().auth.getSession();
+  const uid = data.session?.user.id;
+  if (!uid) throw new VideoError("Session expirée : reconnecte-toi.");
+  const path = `${uid}/machines/${crypto.randomUUID()}.jpg`;
   return uploadToStorage(path, blob, "image/jpeg", onProgress);
 }
 
