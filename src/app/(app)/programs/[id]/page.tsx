@@ -60,6 +60,7 @@ import { useToast } from "@/components/toast";
 import { ProgramForm } from "@/components/ProgramForm";
 import { ExercisePicker } from "@/components/ExercisePicker";
 import { VideoThumb } from "@/components/ExerciseVideo";
+import { MachinePhotosButton, PhotoThumb } from "@/components/MachinePhotos";
 import { ExerciseSheetButton } from "@/components/ExerciseSheet";
 import { KcalChip } from "@/components/KcalChip";
 import { kcalForPlanned, useClientWeight, weightNote } from "@/lib/calories";
@@ -119,6 +120,21 @@ export default function ProgramEditorPage() {
       toast.error(errorMessage(e));
     }
     await reload();
+  }
+
+  /** Photos de la machine : enregistrées sans recharger toute la page. */
+  async function savePhotos(exId: string, urls: string[]) {
+    const { error: e } = await sb.from("program_exercises").update({ image_urls: urls }).eq("id", exId);
+    if (e) throw e;
+    setData((d) =>
+      d && {
+        ...d,
+        sessions: d.sessions.map((s) => ({
+          ...s,
+          program_exercises: s.program_exercises?.map((pe) => (pe.id === exId ? { ...pe, image_urls: urls } : pe)),
+        })),
+      },
+    );
   }
 
   async function addSession() {
@@ -294,6 +310,7 @@ export default function ProgramEditorPage() {
                   }, `${schemeLabel(scheme)} appliqué à ${targets.length} exercice(s).`);
                 }}
                 onDeleteExercise={(exId) => run(() => sb.from("program_exercises").delete().eq("id", exId), "Exercice retiré.")}
+                onSavePhotos={savePhotos}
               />
             ))
           )}
@@ -420,6 +437,7 @@ function SessionCard({
   onReorder,
   onSaveExercise,
   onDeleteExercise,
+  onSavePhotos,
   onApplyScheme,
   kg,
   kcalNote,
@@ -438,6 +456,7 @@ function SessionCard({
   onReorder: (ordered: ProgramExercise[]) => void;
   onSaveExercise: (id: string, patch: Partial<ProgramExercise>, quiet?: boolean) => Promise<void>;
   onDeleteExercise: (id: string) => void;
+  onSavePhotos: (id: string, urls: string[]) => Promise<void>;
   onApplyScheme: (scheme: Scheme) => Promise<void>;
 }) {
   const [name, setName] = useState(session.name);
@@ -565,6 +584,7 @@ function SessionCard({
                 kcal={kcalForPlanned(pe, pe.exercises ?? {}, kg)}
                 onSave={(patch, quiet) => onSaveExercise(pe.id, patch, quiet)}
                 onDelete={() => onDeleteExercise(pe.id)}
+                onSavePhotos={(urls) => onSavePhotos(pe.id, urls)}
               />
             ))}
           </ul>
@@ -734,12 +754,14 @@ function SortableExerciseRow({
   kcal,
   onSave,
   onDelete,
+  onSavePhotos,
 }: {
   pe: ProgramExercise;
   index: number;
   kcal: number;
   onSave: (patch: Partial<ProgramExercise>, quiet?: boolean) => Promise<void>;
   onDelete: () => void;
+  onSavePhotos: (urls: string[]) => Promise<void>;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: pe.id });
   const [editing, setEditing] = useState(false);
@@ -765,6 +787,7 @@ function SortableExerciseRow({
           <GripVertical className="h-4 w-4" />
         </button>
         <VideoThumb url={pe.exercises?.video_url} title={pe.exercises?.name ?? "Exercice"} size="sm" />
+        <PhotoThumb urls={pe.image_urls} title={pe.exercises?.name ?? "Exercice"} size="sm" />
         <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setEditing((v) => !v)}>
           <div className="flex items-start gap-2">
             <span className="mt-0.5 text-xs font-semibold tabular-nums text-ink-500">{index + 1}.</span>
@@ -797,6 +820,7 @@ function SortableExerciseRow({
         </button>
         <div className="flex">
           <ExerciseSheetButton exerciseId={pe.exercise_id} name={pe.exercises?.name ?? "Exercice"} />
+          <MachinePhotosButton programExerciseId={pe.id} urls={pe.image_urls} title={pe.exercises?.name ?? "Exercice"} onChange={onSavePhotos} />
           <Button size="icon" variant="ghost" onClick={() => setEditing((v) => !v)} aria-label="Modifier les paramètres">
             <Pencil className="h-4 w-4" />
           </Button>

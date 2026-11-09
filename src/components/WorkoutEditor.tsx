@@ -8,6 +8,7 @@ import { RestTimer, unlockAudio, type RestRequest } from "./RestTimer";
 import { Badge, Button, Card, ConfirmDialog, Field, Input, LoadingBlock, PageHeader, Select, Textarea, cn } from "./ui";
 import { ExercisePicker } from "./ExercisePicker";
 import { VideoThumb } from "./ExerciseVideo";
+import { PhotoThumb } from "./MachinePhotos";
 import { ExerciseSheetButton } from "./ExerciseSheet";
 import { KcalChip } from "./KcalChip";
 import { kcalForSets, useClientWeight, weightNote } from "@/lib/calories";
@@ -76,6 +77,7 @@ interface Block {
   exercise_name: string;
   cardio: boolean;
   video_url?: string | null;
+  photos?: string[] | null;
   planned: Planned | null;
   sets: SetRow[];
 }
@@ -337,6 +339,7 @@ export function WorkoutEditor({
         exercise_id: pe.exercise_id,
         exercise_name: pe.exercises?.name ?? "Exercice",
         video_url: pe.exercises?.video_url ?? null,
+        photos: pe.image_urls ?? null,
         cardio: isCardioExercise(pe.exercises) || pe.duration_seconds != null || num(pe.distance_km) !== null || pe.hr_min != null,
         planned: {
           sets: pe.sets,
@@ -702,6 +705,7 @@ export function WorkoutEditor({
             <section key={b.key} className="card overflow-hidden animate-fade-in">
               <header className="flex items-start gap-3 border-b border-ink-700/60 bg-ink-800/60 px-4 py-3">
                 <VideoThumb url={b.video_url ?? (b.exercise_id ? videos[b.exercise_id] : null)} title={b.exercise_name} />
+                <PhotoThumb urls={b.photos} title={b.exercise_name} />
                 <div className="min-w-0 flex-1">
                   <p className="flex items-start gap-1 font-display text-lg font-semibold uppercase tracking-wide text-white">
                     <span className="min-w-0">

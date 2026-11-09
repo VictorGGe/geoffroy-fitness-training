@@ -86,6 +86,8 @@ export interface ProgramExercise {
   hr_min?: number | null;
   hr_max?: number | null;
   incline_pct?: number | null;
+  /** Photos de la machine (prises par le coach) */
+  image_urls?: string[] | null;
   exercises?: (Pick<Exercise, "id" | "name" | "muscle_group" | "equipment"> &
     Partial<Pick<Exercise, "description" | "execution_cues" | "common_mistakes" | "variations" | "video_url" | "movement_type">>) | null;
 }

@@ -155,6 +155,9 @@ const EXERCISE_FIELDS = [
 function pickExercise(e: ProgramExercise) {
   const out: Record<string, unknown> = {};
   for (const k of EXERCISE_FIELDS) out[k] = e[k];
+  // Colonnes ajoutées plus tard : copiées seulement si renseignées (fonctionne même avant le SQL)
+  if (e.incline_pct != null) out.incline_pct = e.incline_pct;
+  if (e.image_urls?.length) out.image_urls = e.image_urls;
   return out;
 }
 
