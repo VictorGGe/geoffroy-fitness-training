@@ -26,6 +26,7 @@ function CrossTrainingInner() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<PublicSlot | null>(null);
   const [mine, setMine] = useState<SavedReg[]>([]);
+  const [finding, setFinding] = useState(false);
 
   async function load() {
     try {
@@ -85,6 +86,12 @@ function CrossTrainingInner() {
           </li>
         ))}
       </ol>
+
+      <div className="mt-4 text-center">
+        <button className="text-sm text-royal-300 underline-offset-4 hover:text-royal-200 hover:underline" onClick={() => setFinding(true)}>
+          Déjà inscrit(e) ? Retrouver mon inscription et payer
+        </button>
+      </div>
 
       {mine.length > 0 && (
         <section className="mt-7">
@@ -146,6 +153,7 @@ function CrossTrainingInner() {
       </section>
 
       {selected && <RegisterModal slot={selected} onClose={() => setSelected(null)} onFull={load} />}
+      {finding && <FindModal onClose={() => setFinding(false)} />}
     </>
   );
 }
@@ -231,7 +239,7 @@ function RegisterModal({ slot, onClose, onFull }: { slot: PublicSlot; onClose: (
       }
       if (!j.token) throw new Error("Inscription impossible.");
       saveReg({ token: j.token, label: slot.title, starts_at: slot.starts_at });
-      router.push(`/cross-training/inscription?t=${j.token}&nouveau=1`);
+      router.push(`/cross-training/inscription?t=${j.token}${j.existing ? "" : "&nouveau=1"}`);
     } catch (e) {
       setErr((e as Error).message);
       setSaving(false);
@@ -302,6 +310,84 @@ function RegisterModal({ slot, onClose, onFull }: { slot: PublicSlot; onClose: (
           <p className="text-xs text-ink-500">* obligatoire</p>
         </fieldset>
         {err && <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{err}</p>}
+      </div>
+    </Modal>
+  );
+}
+
+function FindModal({ onClose }: { onClose: () => void }) {
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [found, setFound] = useState<{ token: string; label: string; starts_at: string; paid: boolean; cancelled: boolean }[] | null>(null);
+
+  async function search() {
+    setErr(null);
+    setFound(null);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/ct/public/find", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, phone }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || "Recherche impossible.");
+      setFound(j.registrations);
+      for (const r of j.registrations) saveReg({ token: r.token, label: r.label, starts_at: r.starts_at });
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Retrouver mon inscription"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button loading={busy} onClick={search}>Rechercher</Button>
+        </>
+      }
+    >
+      <p className="mb-4 text-sm text-ink-400">Indique l&apos;email et le téléphone utilisés lors de ton inscription.</p>
+      <div className="space-y-4">
+        <Field label="Email">
+          <Input type="email" inputMode="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
+        <Field label="Téléphone">
+          <Input type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="06 12 34 56 78" />
+        </Field>
+        {err && <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{err}</p>}
+        {found && found.length === 0 && (
+          <p className="rounded-lg bg-ink-800 p-3 text-sm text-ink-300">Aucune inscription à venir avec ces informations. Vérifie l&apos;orthographe de l&apos;email et le numéro.</p>
+        )}
+        {found && found.length > 0 && (
+          <div className="space-y-2">
+            {found.map((r) => (
+              <a
+                key={r.token}
+                href={`/cross-training/inscription?t=${r.token}`}
+                className="flex items-center gap-3 rounded-xl border border-ink-700 bg-ink-900/60 p-3 transition hover:border-royal-500/60"
+              >
+                <CalendarDays className="h-5 w-5 shrink-0 text-royal-400" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-white">{r.label}</p>
+                  <p className="text-xs text-ink-400">{fmtSlotFull(r.starts_at)}</p>
+                </div>
+                <span className={cn("text-xs font-medium", r.cancelled ? "text-red-300" : r.paid ? "text-emerald-300" : "text-royal-300")}>
+                  {r.cancelled ? "Annulée" : r.paid ? "Payée" : "Voir / payer"}
+                </span>
+                <ChevronRight className="h-4 w-4 text-ink-500" />
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     </Modal>
   );

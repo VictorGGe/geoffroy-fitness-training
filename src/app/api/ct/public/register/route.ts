@@ -9,7 +9,7 @@ import {
   personalLink,
   sendMail,
 } from "@/lib/server/ct";
-import { CONSENT_VERSION, CONSENTS, EMAIL_RE, validPhone, type CtRegistration, type CtSlot } from "@/lib/crossTraining";
+import { CONSENT_VERSION, CONSENTS, EMAIL_RE, samePhone, validPhone, type CtRegistration, type CtSlot } from "@/lib/crossTraining";
 import { fail, NOT_READY, ok, readJson, str, UUID } from "../_shared";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 const ERRORS: Record<string, [string, number]> = {
   CT_CLOSED: ["Ce créneau n'est plus disponible.", 409],
   CT_PAST: ["Ce créneau est déjà passé.", 409],
-  CT_DUPLICATE: ["Tu es déjà inscrit(e) à ce créneau avec cette adresse email.", 409],
+  CT_DUPLICATE: ["Cette adresse email est déjà inscrite à ce créneau. Utilise « Retrouver mon inscription » avec le bon numéro de téléphone.", 409],
   CT_FULL: ["Désolé, ce créneau est complet.", 409],
 };
 
@@ -58,6 +58,17 @@ export async function POST(req: Request) {
   });
   if (error) {
     const code = Object.keys(ERRORS).find((k) => error.message.includes(k));
+    if (code === "CT_DUPLICATE") {
+      // Déjà inscrit(e) avec ce même email et ce même téléphone : on renvoie simplement vers sa page
+      const { data: prev } = await admin
+        .from("ct_registrations")
+        .select("token, phone")
+        .eq("slot_id", slotId)
+        .ilike("email", email)
+        .neq("status", "annule")
+        .maybeSingle();
+      if (prev && samePhone(prev.phone, phone)) return ok({ token: prev.token, existing: true });
+    }
     if (code) return fail(ERRORS[code][0], ERRORS[code][1]);
     console.error("[ct] inscription", error.message);
     return fail(NOT_READY, 503);

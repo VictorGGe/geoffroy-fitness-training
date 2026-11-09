@@ -48,6 +48,48 @@ export function payMode(): "auto" | "lien" | null {
   return stripeKey() ? "auto" : paymentLink() ? "lien" : null;
 }
 
+/** La variable existe mais la clé n'a pas le bon format (souvent un copier-coller incomplet). */
+export function stripeKeyMalformed(): boolean {
+  return !!clean(process.env.STRIPE_SECRET_KEY, "STRIPE_SECRET_KEY") && !stripeKey();
+}
+
+/**
+ * Test complet : crée une vraie page de paiement de 1 € (jamais payée, elle expire seule)
+ * pour vérifier que la clé et le compte Stripe permettent d'encaisser.
+ */
+export async function stripeSelfTest(origin: string): Promise<{ ok: boolean; mode: "live" | "test" | null; error?: string }> {
+  const mode = stripeMode();
+  if (stripeKeyMalformed()) return { ok: false, mode, error: "La clé STRIPE_SECRET_KEY n'a pas le bon format : elle doit commencer par sk_live_ ou rk_live_ (vérifie qu'elle a été copiée en entier, sans espace)." };
+  if (!stripeKey()) return { ok: false, mode, error: "Aucune clé Stripe dans Vercel." };
+  try {
+    const s = await stripe<StripeSession>("POST", "checkout/sessions", {
+      mode: "payment",
+      locale: "fr",
+      "line_items[0][quantity]": 1,
+      "line_items[0][price_data][currency]": "eur",
+      "line_items[0][price_data][unit_amount]": 100,
+      "line_items[0][price_data][product_data][name]": "Test de configuration (ne pas payer)",
+      success_url: `${origin}/creneaux`,
+      cancel_url: `${origin}/creneaux`,
+    });
+    // On l'expire tout de suite : personne ne pourra la payer
+    await stripe("POST", `checkout/sessions/${encodeURIComponent(s.id)}/expire`).catch(() => {});
+    return { ok: true, mode };
+  } catch (e) {
+    return { ok: false, mode, error: explainStripe((e as Error).message) };
+  }
+}
+
+/** Traduit les erreurs Stripe les plus courantes. */
+export function explainStripe(msg: string): string {
+  if (/cannot currently make live charges|activate your account|account.*not.*activated/i.test(msg))
+    return "Ton compte Stripe n'est pas encore activé pour les vrais paiements : termine l'activation dans Stripe (identité, entreprise, IBAN). Détail Stripe : " + msg;
+  if (/invalid api key|api key provided/i.test(msg)) return "Stripe refuse la clé : elle est invalide ou a été supprimée. Crée une nouvelle clé et remplace-la dans Vercel. Détail Stripe : " + msg;
+  if (/permission|does not have the required|restricted/i.test(msg))
+    return "La clé n'a pas l'autorisation de créer des paiements : recrée-la avec « Accès complet, à l'exception des opérations sensibles ». Détail Stripe : " + msg;
+  return "Erreur Stripe : " + msg;
+}
+
 export function stripeMode(): "live" | "test" | null {
   const k = stripeKey();
   return !k ? null : k.includes("_live_") ? "live" : "test";

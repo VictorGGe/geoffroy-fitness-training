@@ -165,6 +165,12 @@ export function validPhone(p: string): boolean {
   return /^[+\d][\d\s.()-]{5,28}$/.test(p.trim()) && p.replace(/\D/g, "").length >= 9;
 }
 
+/** Compare deux numéros (06… et +33 6… sont identiques) sur les 9 derniers chiffres. */
+export function samePhone(a: string, b: string): boolean {
+  const d = (s: string) => s.replace(/\D/g, "").slice(-9);
+  return d(a).length === 9 && d(a) === d(b);
+}
+
 /** Lien WhatsApp à partir d'un numéro français (06… → 336…). */
 export function whatsappLink(phone: string, text: string): string {
   let d = phone.replace(/\D/g, "");

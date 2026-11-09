@@ -8,6 +8,7 @@ import {
   originOf,
   personalLink,
   sendMail,
+  stripeSelfTest,
 } from "@/lib/server/ct";
 import type { CtRegistration, CtSlot } from "@/lib/crossTraining";
 import { fail, ok, readJson, str, UUID } from "../../public/_shared";
@@ -28,6 +29,8 @@ export async function POST(req: Request) {
   const admin = await adminClient();
   if (!admin) return fail("La clé SUPABASE_SERVICE_ROLE_KEY n'est pas configurée dans Vercel (voir /diagnostic).", 500);
   const origin = originOf(req);
+
+  if (action === "stripe-test") return ok(await stripeSelfTest(origin));
 
   if (action === "mark-paid") {
     const id = str(b.registrationId, 40);

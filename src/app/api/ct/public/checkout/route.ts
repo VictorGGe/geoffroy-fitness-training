@@ -1,4 +1,4 @@
-import { activeCount, adminClient, createCheckout, originOf, paymentLink, personalLink, stripeKey } from "@/lib/server/ct";
+import { activeCount, adminClient, createCheckout, explainStripe, originOf, paymentLink, personalLink, stripeKey } from "@/lib/server/ct";
 import { fmtSlotFull, PAY_LINK_MARK, type CtRegistration, type CtSlot } from "@/lib/crossTraining";
 import { fail, NOT_READY, ok, readJson, str, UUID } from "../_shared";
 
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     if (!session.url) throw new Error("Lien de paiement manquant");
     return ok({ url: session.url });
   } catch (e) {
-    console.error("[stripe] checkout", (e as Error).message);
+    console.error("[stripe] checkout", explainStripe((e as Error).message));
     return fail("Le paiement n'a pas pu être ouvert. Réessaie dans un instant.", 502);
   }
 }

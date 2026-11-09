@@ -12,6 +12,7 @@ import {
   CreditCard,
   Download,
   ExternalLink,
+  Link2,
   Mail,
   MessageCircle,
   Phone,
@@ -44,8 +45,14 @@ interface Config {
   coachId: string;
   stripe: "live" | "test" | null;
   payMode?: "auto" | "lien" | null;
+  stripeKeyMalformed?: boolean;
   email: boolean;
   server: boolean;
+}
+
+/** Lien personnel du participant (suivi de l'inscription et paiement). */
+function regLink(token: string) {
+  return `${typeof window !== "undefined" ? window.location.origin : ""}/cross-training/inscription?t=${token}`;
 }
 
 async function coachAction(body: Record<string, unknown>) {
@@ -220,7 +227,20 @@ export default function CreneauxPage() {
 /* ------------------------------------------------------------------ */
 
 function SetupStatus({ config }: { config: Config | null }) {
+  const [test, setTest] = useState<{ ok: boolean; mode: string | null; error?: string } | null>(null);
+  const [testing, setTesting] = useState(false);
   if (!config) return null;
+  async function runTest() {
+    setTesting(true);
+    setTest(null);
+    try {
+      setTest(await coachAction({ action: "stripe-test" }));
+    } catch (e) {
+      setTest({ ok: false, mode: null, error: errorMessage(e) });
+    } finally {
+      setTesting(false);
+    }
+  }
   const items = [
     { ok: config.server, label: "Inscriptions en ligne", off: "clé SUPABASE_SERVICE_ROLE_KEY manquante dans Vercel" },
     {
@@ -231,7 +251,7 @@ function SetupStatus({ config }: { config: Config | null }) {
           : config.stripe === "test"
             ? "Paiement carte automatique (mode test)"
             : "Paiement carte automatique",
-      off: "Stripe pas encore connecté",
+      off: config.stripeKeyMalformed ? "la clé STRIPE_SECRET_KEY n'a pas le bon format" : "Stripe pas encore connecté",
     },
     { ok: config.email, label: "Emails automatiques", off: "Gmail pas encore connecté" },
   ];
@@ -250,6 +270,25 @@ function SetupStatus({ config }: { config: Config | null }) {
           {!i.ok && <span className="text-amber-200/70">— {i.off}</span>}
         </span>
       ))}
+      {(config.stripe || config.stripeKeyMalformed) && (
+        <Button size="sm" variant="outline" className="h-7 rounded-full px-3 text-xs" loading={testing} onClick={runTest}>
+          <CreditCard className="h-3.5 w-3.5" /> Tester le paiement
+        </Button>
+      )}
+      {test && (
+        <p
+          className={cn(
+            "w-full rounded-xl border p-3 text-sm",
+            test.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-red-500/30 bg-red-500/10 text-red-200",
+          )}
+        >
+          {test.ok
+            ? test.mode === "live"
+              ? "✓ Stripe fonctionne en mode réel : tes clients peuvent payer par carte, l'argent arrive sur ton compte Stripe."
+              : "✓ Stripe fonctionne, mais en mode TEST : aucun vrai paiement. Remplace la clé par la clé réelle (sk_live_ ou rk_live_) pour encaisser."
+            : test.error}
+        </p>
+      )}
     </div>
   );
 }
@@ -421,8 +460,8 @@ function SlotPanel({
                       href={whatsappLink(
                         r.phone,
                         state === "attente"
-                          ? `Salut ${r.first_name}, c'est Victor ! Merci pour ton inscription au cross training du ${fmtSlotFull(slot.starts_at)}.`
-                          : `Salut ${r.first_name}, c'est Victor ! Le cross training du ${fmtSlotFull(slot.starts_at)} est confirmé 💪 Tu peux régler ta place avec le lien reçu par email.`,
+                          ? `Salut ${r.first_name}, c'est Victor ! Merci pour ton inscription au cross training du ${fmtSlotFull(slot.starts_at)}. Tu peux suivre ton inscription ici : ${regLink(r.token)}`
+                          : `Salut ${r.first_name}, c'est Victor ! Le cross training du ${fmtSlotFull(slot.starts_at)} est confirmé 💪 Tu peux régler ta place ici : ${regLink(r.token)}`,
                       )}
                       target="_blank"
                       rel="noreferrer"
@@ -432,6 +471,24 @@ function SlotPanel({
                     >
                       <MessageCircle className="h-4 w-4" />
                     </a>
+                    {r.status === "inscrit" && !cancelled && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Copier son lien de paiement"
+                        title="Copier son lien personnel (suivi et paiement)"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(regLink(r.token));
+                            toast.success(`Lien de ${r.first_name} copié : envoie-le par SMS ou WhatsApp.`);
+                          } catch {
+                            toast.info(regLink(r.token));
+                          }
+                        }}
+                      >
+                        <Link2 className="h-4 w-4" />
+                      </Button>
+                    )}
                     {r.status === "inscrit" && !cancelled && (
                       <Button
                         variant="ghost"
