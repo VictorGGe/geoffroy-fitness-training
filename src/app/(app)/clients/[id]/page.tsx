@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   ChevronRight,
   ClipboardList,
+  FileText,
   ClipboardPlus,
   Dumbbell,
   Info,
@@ -46,6 +47,7 @@ import { IntakePanel } from "@/components/IntakePanel";
 import { NutritionPanel } from "@/components/NutritionPanel";
 import { StepsPanel } from "@/components/StepsPanel";
 import { EnergyPanel } from "@/components/EnergyPanel";
+import { QuotesPanel } from "@/components/QuotesPanel";
 import { ClientAppointments } from "@/components/AgendaWidgets";
 import { useToast } from "@/components/toast";
 import { getSupabase } from "@/lib/supabase/client";
@@ -64,6 +66,7 @@ const TABS = [
   { key: "pas", label: "Pas", icon: <Activity className="h-3.5 w-3.5" /> },
   { key: "depense", label: "Dépense", icon: <Flame className="h-3.5 w-3.5" /> },
   { key: "bilans", label: "Bilans", icon: <ClipboardList className="h-3.5 w-3.5" /> },
+  { key: "devis", label: "Devis", icon: <FileText className="h-3.5 w-3.5" /> },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -175,6 +178,7 @@ function ClientDetail() {
         {tab === "nutrition" && <NutritionPanel clientId={client.id} />}
         {tab === "pas" && <StepsPanel clientId={client.id} />}
         {tab === "depense" && <EnergyPanel clientId={client.id} />}
+        {tab === "devis" && <QuotesPanel client={client} />}
         {tab === "bilans" && (
           <div className="space-y-6">
             <IntakePanel client={client} />
