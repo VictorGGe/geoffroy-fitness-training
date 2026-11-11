@@ -208,6 +208,24 @@ export function QuotesPanel({ client }: { client: Client }) {
 
 const EMPTY_ITEM: QuoteItem = { label: "", sub: "", qty: 1, unit_price: 0 };
 
+/** Prestations courantes à ajouter en un clic (prix à compléter si besoin). */
+const QUICK_ITEMS: QuoteItem[] = [
+  { label: "Séance de Personal Training individuelle", sub: "Durée et horaires définis avec le Client", qty: 1, unit_price: 40 },
+  { label: "Séance en duo", sub: "2 personnes, au club", qty: 1, unit_price: 0 },
+  { label: "Programme d'entraînement personnalisé", sub: "Conçu selon les objectifs du Client", qty: 1, unit_price: 0 },
+  { label: "Plan alimentaire personnalisé", sub: "Adapté aux objectifs et aux habitudes du Client", qty: 1, unit_price: 0 },
+  { label: "Bilan complet", sub: "Objectifs, santé, mesures et tests physiques", qty: 1, unit_price: 0 },
+  { label: "Suivi à distance", sub: "Programme et suivi sur l'application, par mois", qty: 1, unit_price: 0 },
+];
+const QUICK_LABELS: Record<string, string> = {
+  "Séance de Personal Training individuelle": "Séance individuelle",
+  "Séance en duo": "Séance en duo",
+  "Programme d'entraînement personnalisé": "Programme personnalisé",
+  "Plan alimentaire personnalisé": "Plan alimentaire",
+  "Bilan complet": "Bilan complet",
+  "Suivi à distance": "Suivi à distance",
+};
+
 function QuoteModal({
   client,
   initial,
@@ -234,8 +252,11 @@ function QuoteModal({
   const [validUntil, setValidUntil] = useState(editingExisting ? initial!.valid_until : addDays(today, QUOTE_VALIDITY_DAYS));
   const [preset, setPreset] = useState("");
   const [intro, setIntro] = useState(initial?.intro ?? "");
-  const [items, setItems] = useState<QuoteItem[]>(initial?.items?.length ? initial.items : []);
-  const [conditions, setConditions] = useState<QuoteCondition[]>(initial?.conditions?.length ? initial.conditions : []);
+  // Nouveau devis : prêt pour un devis libre (une ligne vide + conditions par défaut) ; une formule peut le remplacer
+  const [items, setItems] = useState<QuoteItem[]>(initial?.items?.length ? initial.items : [{ ...EMPTY_ITEM }]);
+  const [conditions, setConditions] = useState<QuoteCondition[]>(
+    initial?.conditions?.length ? initial.conditions : defaultConditions(null, 0, addDays(today, QUOTE_VALIDITY_DAYS)),
+  );
   const [email, setEmail] = useState(initial?.client_email ?? lastQuote?.client_email ?? accountEmail ?? "");
   const [phone, setPhone] = useState(initial?.client_phone ?? lastQuote?.client_phone ?? "");
   const [address, setAddress] = useState(initial?.client_address ?? lastQuote?.client_address ?? "");
@@ -265,6 +286,14 @@ function QuoteModal({
 
   function applyPreset(key: string) {
     setPreset(key);
+    if (key === "libre") {
+      setIntro("");
+      setItems([{ ...EMPTY_ITEM }]);
+      const gen = defaultConditions(null, 0, validUntil);
+      auto.current = { payment: gen.find((c) => c.label === "Paiement")!.value, validity: gen.find((c) => c.label === "Validité du devis")!.value };
+      setConditions(gen);
+      return;
+    }
     const p = QUOTE_PRESETS.find((x) => x.key === key);
     if (!p) return;
     setIntro(p.intro);
@@ -328,9 +357,15 @@ function QuoteModal({
       }
     >
       <div className="space-y-5">
-        <Field label="Formule" hint="Remplit automatiquement la description, les lignes, le total et les conditions. Tout reste modifiable.">
+        <Field
+          label="Type de devis"
+          hint="Une formule remplit tout automatiquement. Pour un devis hors formule, garde « Devis libre » et écris tes propres lignes. Tout reste modifiable."
+        >
           <Select value={preset} onChange={(e) => applyPreset(e.target.value)}>
-            <option value="">{items.length ? "Remplacer par une formule…" : "Choisir une formule…"}</option>
+            <option value="">{editingExisting ? "Garder les lignes actuelles" : "Devis libre (hors formule)"}</option>
+            <optgroup label="Sur mesure">
+              <option value="libre">Devis libre (hors formule) — repartir de zéro</option>
+            </optgroup>
             <optgroup label="Séances à l'unité">
               {QUOTE_PRESETS.filter((p) => p.key.startsWith("pack-")).map((p) => (
                 <option key={p.key} value={p.key}>{p.label}</option>
@@ -380,7 +415,13 @@ function QuoteModal({
         </fieldset>
 
         <Field label="Description de la prestation">
-          <Textarea value={intro} onChange={(e) => setIntro(e.target.value)} rows={2} maxLength={2000} />
+          <Textarea
+            value={intro}
+            onChange={(e) => setIntro(e.target.value)}
+            rows={2}
+            maxLength={2000}
+            placeholder="Ex. Accompagnement sur mesure : préparation physique pour un trail de 30 km, 8 semaines."
+          />
         </Field>
 
         <div>
@@ -418,9 +459,21 @@ function QuoteModal({
               </div>
             ))}
           </div>
-          <Button size="sm" variant="outline" className="mt-2" onClick={() => setItems((xs) => [...xs, { ...EMPTY_ITEM }])}>
-            <Plus className="h-4 w-4" /> Ajouter une ligne
-          </Button>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setItems((xs) => [...xs, { ...EMPTY_ITEM }])}>
+              <Plus className="h-4 w-4" /> Ligne vide
+            </Button>
+            {QUICK_ITEMS.map((q) => (
+              <button
+                key={q.label}
+                type="button"
+                onClick={() => setItems((xs) => [...xs.filter((x) => x.label.trim() || x.unit_price), { ...q }])}
+                className="rounded-full border border-ink-600 px-3 py-1 text-xs text-ink-300 transition hover:border-royal-500 hover:text-white"
+              >
+                + {QUICK_LABELS[q.label]}
+              </button>
+            ))}
+          </div>
           <div className="mt-3 flex items-center justify-between rounded-xl border border-royal-500/30 bg-royal-600/10 px-4 py-3">
             <span className="text-sm text-ink-200">Total à payer <span className="text-xs text-ink-400">(TVA non applicable)</span></span>
             <span className="font-display text-2xl font-bold tabular-nums text-white">{eur(total)}</span>
