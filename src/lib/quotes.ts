@@ -31,6 +31,17 @@ export interface Quote {
   status: "brouillon" | "envoye" | "accepte" | "refuse";
   invoice_id: string | null;
   created_at: string;
+  /** Signature en ligne */
+  sign_token?: string;
+  client_signature?: string | null;
+  client_signed_name?: string | null;
+  client_signed_at?: string | null;
+  coach_signature?: string | null;
+  coach_signed_at?: string | null;
+}
+
+export function quoteSignLink(origin: string, token: string): string {
+  return `${origin}/devis/${token}`;
 }
 
 export const QUOTE_STATUS: Record<Quote["status"], { label: string; tone: "neutral" | "blue" | "green" | "red" }> = {

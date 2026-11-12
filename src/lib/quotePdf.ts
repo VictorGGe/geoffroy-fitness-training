@@ -176,6 +176,62 @@ async function addFormFields(base: ArrayBuffer): Promise<Uint8Array> {
   return pdf.save();
 }
 
+/** Date courte « 12/11/2026 » (heure de Paris). */
+function fmtShort(iso: string): string {
+  return new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(iso));
+}
+
+/** Signature (image PNG) dans son cadre. */
+function signatureBox(doc: jsPDF, png: string, x: number, y: number, w: number, h: number) {
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(190, 205, 226);
+  doc.setLineWidth(0.25);
+  doc.rect(x, y, w, h, "FD");
+  try {
+    const p = doc.getImageProperties(png);
+    const ratio = p.width / p.height;
+    let ih = h - 1;
+    let iw = ih * ratio;
+    if (iw > w - 2) {
+      iw = w - 2;
+      ih = iw / ratio;
+    }
+    doc.addImage(png, "PNG", x + (w - iw) / 2, y + (h - ih) / 2, iw, ih);
+  } catch {
+    /* image illisible : cadre laissé vide */
+  }
+}
+
+/** Ligne « Le 12/11/2026 · Mention : Bon pour accord » une fois signé. */
+function filledLine(doc: jsPDF, x: number, y: number, date: string) {
+  doc.setFontSize(6.3);
+  doc.setTextColor(...GREY);
+  doc.text("Le", x, y + 3.4);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...TEXT);
+  doc.text(date, x + 4, y + 3.4);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.3);
+  doc.setTextColor(...GREY);
+  doc.text("Mention", x + 31, y + 3.4);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...TEXT);
+  doc.text(t("Bon pour accord"), x + 41, y + 3.4);
+  doc.setFont("helvetica", "normal");
+}
+
+/** Case cochée (dessinée). */
+function tick(doc: jsPDF, x: number, y: number, size = 3.4) {
+  doc.setFillColor(26, 111, 230);
+  doc.rect(x, y, size, size, "F");
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.5);
+  doc.line(x + 0.7, y + size * 0.55, x + size * 0.42, y + size - 0.7);
+  doc.line(x + size * 0.42, y + size - 0.7, x + size - 0.6, y + 0.7);
+}
+
 function dotted(doc: jsPDF, x1: number, x2: number, y: number) {
   doc.setDrawColor(...LINE);
   doc.setLineWidth(0.3);
@@ -330,7 +386,9 @@ export async function buildQuotePdf(quote: Quote, client: { first_name: string; 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.4);
   doc.setTextColor(...BLUE);
-  doc.text(t("Remplissez les zones bleues, écrivez « Bon pour accord » dans la mention et signez directement dans ce PDF."), M + 31, y);
+  if (!quote.client_signed_at || !quote.coach_signed_at) {
+    doc.text(t(quote.client_signed_at ? "Signé en ligne par le client." : "Signature en ligne via le lien reçu, ou directement dans les zones bleues de ce PDF."), M + 31, y);
+  }
   y += 5;
   const sigW = (W - 2 * M - 16) / 2;
   const sigX2 = M + sigW + 16;
@@ -338,28 +396,47 @@ export async function buildQuotePdf(quote: Quote, client: { first_name: string; 
   doc.setTextColor(...GREY);
   doc.text("SIGNATURE DU CLIENT", M, y);
   doc.text("SIGNATURE DU COACH", sigX2, y);
-  // Client : signature (dessinée avec l'outil de signature du lecteur, ou nom tapé), date, mention
-  textField(doc, "client_signature", M, y + 1.5, sigW, 11, { fontSize: 12 });
   const fy = y + 14.5;
-  doc.setFontSize(6.3);
-  doc.setTextColor(...GREY);
-  doc.text("Le", M, fy + 3.4);
-  textField(doc, "client_date", M + 4, fy, 24, 5, { fontSize: 8 });
-  doc.text("Mention", M + 31, fy + 3.4);
-  textField(doc, "client_mention", M + 41, fy, sigW - 41, 5, { fontSize: 8 });
-  checkBox(doc, "client_accepte_cgv", M, fy + 7.2, 3.4);
+  const clientDate = quote.client_signed_at ? fmtShort(quote.client_signed_at) : null;
+  const coachDate = quote.coach_signed_at ? fmtShort(quote.coach_signed_at) : null;
+  // Client : signée en ligne → image de la signature ; sinon champs à remplir
+  if (quote.client_signature && clientDate) {
+    signatureBox(doc, quote.client_signature, M, y + 1.5, sigW, 11);
+    filledLine(doc, M, fy, clientDate);
+    tick(doc, M, fy + 7.2);
+  } else {
+    textField(doc, "client_signature", M, y + 1.5, sigW, 11, { fontSize: 12 });
+    doc.setFontSize(6.3);
+    doc.setTextColor(...GREY);
+    doc.text("Le", M, fy + 3.4);
+    textField(doc, "client_date", M + 4, fy, 24, 5, { fontSize: 8 });
+    doc.text("Mention", M + 31, fy + 3.4);
+    textField(doc, "client_mention", M + 41, fy, sigW - 41, 5, { fontSize: 8 });
+    checkBox(doc, "client_accepte_cgv", M, fy + 7.2, 3.4);
+  }
   doc.setFontSize(6.6);
   doc.setTextColor(60, 64, 72);
   doc.text(t("J'ai lu et j'accepte les conditions générales de vente (page 2)"), M + 5, fy + 9.8);
-  // Coach : mêmes champs (signature, date, mention)
-  textField(doc, "coach_signature", sigX2, y + 1.5, sigW, 11, { fontSize: 12 });
-  doc.setFontSize(6.3);
-  doc.setTextColor(...GREY);
-  doc.text("Le", sigX2, fy + 3.4);
-  textField(doc, "coach_date", sigX2 + 4, fy, 24, 5, { fontSize: 8 });
-  doc.text("Mention", sigX2 + 31, fy + 3.4);
-  textField(doc, "coach_mention", sigX2 + 41, fy, sigW - 41, 5, { fontSize: 8 });
+  if (clientDate) {
+    doc.setFontSize(5.8);
+    doc.setTextColor(...GREY);
+    doc.text(t(`Signé électroniquement par ${quote.client_signed_name ?? clientName} le ${clientDate}.`), M, fy + 13.4);
+  }
+  // Coach
+  if (quote.coach_signature && coachDate) {
+    signatureBox(doc, quote.coach_signature, sigX2, y + 1.5, sigW, 11);
+    filledLine(doc, sigX2, fy, coachDate);
+  } else {
+    textField(doc, "coach_signature", sigX2, y + 1.5, sigW, 11, { fontSize: 12 });
+    doc.setFontSize(6.3);
+    doc.setTextColor(...GREY);
+    doc.text("Le", sigX2, fy + 3.4);
+    textField(doc, "coach_date", sigX2 + 4, fy, 24, 5, { fontSize: 8 });
+    doc.text("Mention", sigX2 + 31, fy + 3.4);
+    textField(doc, "coach_mention", sigX2 + 41, fy, sigW - 41, 5, { fontSize: 8 });
+  }
   doc.setFontSize(6.2);
+  doc.setTextColor(...GREY);
   doc.text(t(COACH.name), sigX2, fy + 9.8);
   footer(doc);
 
@@ -405,16 +482,20 @@ export async function buildQuotePdf(quote: Quote, client: { first_name: string; 
   doc.setTextColor(...GREY);
   doc.text(t("SIGNATURE DU CLIENT · précédée de « Lu et approuvé »"), M, y);
   doc.text(t("SIGNATURE DU COACH · précédée de « Lu et approuvé »"), sigX2, y);
-  checkBox(doc, "cgv_lu_et_approuve", M, y + 2, 3.4);
-  doc.setFontSize(6.6);
-  doc.setTextColor(60, 64, 72);
-  doc.text("Lu et approuvé", M + 5, y + 4.6);
-  textField(doc, "cgv_signature", M + 26, y + 1.4, sigW - 26, 5, { fontSize: 8 });
-  checkBox(doc, "coach_cgv_lu_et_approuve", sigX2, y + 2, 3.4);
-  doc.setFontSize(6.6);
-  doc.setTextColor(60, 64, 72);
-  doc.text("Lu et approuvé", sigX2 + 5, y + 4.6);
-  textField(doc, "coach_cgv_signature", sigX2 + 26, y + 1.4, sigW - 26, 5, { fontSize: 8 });
+  const cgvSide = (x0: number, signedBy: string | null, date: string | null, prefix: string) => {
+    if (signedBy && date) tick(doc, x0, y + 2);
+    else checkBox(doc, `${prefix}cgv_lu_et_approuve`, x0, y + 2, 3.4);
+    doc.setFontSize(6.6);
+    doc.setTextColor(60, 64, 72);
+    doc.text("Lu et approuvé", x0 + 5, y + 4.6);
+    if (signedBy && date) {
+      doc.setFont("helvetica", "bold");
+      doc.text(t(`${signedBy} · signé le ${date}`), x0 + 26, y + 4.6);
+      doc.setFont("helvetica", "normal");
+    } else textField(doc, `${prefix}cgv_signature`, x0 + 26, y + 1.4, sigW - 26, 5, { fontSize: 8 });
+  };
+  cgvSide(M, quote.client_signed_name ?? (quote.client_signed_at ? clientName : null), quote.client_signed_at ? fmtShort(quote.client_signed_at) : null, "");
+  cgvSide(sigX2, quote.coach_signed_at ? COACH.name : null, quote.coach_signed_at ? fmtShort(quote.coach_signed_at) : null, "coach_");
   footer(doc);
 
   // Numéros de page « 1/2 » (total connu maintenant)

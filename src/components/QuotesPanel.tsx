@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Copy, FileDown, FileText, Pencil, Plus, Receipt, Send, Trash2, X } from "lucide-react";
+import { CheckCircle2, Copy, FileDown, FileText, MessageCircle, PenLine, Pencil, Plus, QrCode, Receipt, Send, Share2, Trash2, X } from "lucide-react";
+import QRCode from "qrcode";
+import { SignaturePad, type SignaturePadHandle } from "./SignaturePad";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorBlock, Field, Input, LoadingBlock, Modal, Select, Textarea } from "./ui";
 import { useToast } from "./toast";
 import { cn } from "@/lib/cn";
@@ -18,6 +20,7 @@ import {
   QUOTE_PRESETS,
   QUOTE_STATUS,
   QUOTE_VALIDITY_DAYS,
+  quoteSignLink,
   quoteTotal,
   type Quote,
   type QuoteCondition,
@@ -57,32 +60,8 @@ export function QuotesPanel({ client }: { client: Client }) {
     }
   }
 
-  /** Envoi du PDF (à remplir et signer) : partage du téléphone si possible, sinon téléchargement. */
-  async function send(q: Quote) {
-    setBusy(`send-${q.id}`);
-    try {
-      const { buildQuotePdf, exportQuotePdf } = await import("@/lib/quotePdf");
-      const { bytes, fileName } = await buildQuotePdf(q, client);
-      const file = new File([bytes as BlobPart], fileName, { type: "application/pdf" });
-      const text = `Bonjour ${client.first_name}, voici ton devis ${q.number}. Tu peux le remplir et le signer directement dans le PDF, puis me le renvoyer. Victor`;
-      if (typeof navigator !== "undefined" && navigator.canShare?.({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: `Devis ${q.number}`, text });
-        } catch (e) {
-          if ((e as DOMException)?.name === "AbortError") return;
-          throw e;
-        }
-      } else {
-        await exportQuotePdf(q, client);
-        toast.info("PDF téléchargé : joins-le à ton email ou message.");
-      }
-      if (q.status === "brouillon") await setStatus(q, "envoye");
-    } catch (e) {
-      toast.error(errorMessage(e));
-    } finally {
-      setBusy(null);
-    }
-  }
+  const [signLink, setSignLink] = useState<Quote | null>(null);
+  const [coachSign, setCoachSign] = useState<Quote | null>(null);
 
   async function setStatus(q: Quote, status: Quote["status"]) {
     const { error: e } = await getSupabase().from("quotes").update({ status }).eq("id", q.id);
@@ -166,6 +145,24 @@ export function QuotesPanel({ client }: { client: Client }) {
                   <p className="mt-0.5 truncate text-xs text-ink-400">
                     {fmtDateFr(q.issued_on)} · {q.items[0]?.label ?? "—"}
                   </p>
+                  <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                    {q.client_signed_at ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-300">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Signé par {q.client_signed_name} le {new Date(q.client_signed_at).toLocaleDateString("fr-FR")}
+                      </span>
+                    ) : (
+                      <span className="text-ink-500">Pas encore signé par le client</span>
+                    )}
+                    {q.coach_signed_at ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-300">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Ta signature
+                      </span>
+                    ) : (
+                      <button className="text-royal-300 hover:text-royal-200" onClick={() => setCoachSign(q)}>
+                        Signer de mon côté
+                      </button>
+                    )}
+                  </p>
                 </div>
                 <p className="w-24 text-right font-display text-lg font-semibold tabular-nums text-white">{eur(Number(q.total))}</p>
                 <div className="flex items-center gap-1">
@@ -182,9 +179,11 @@ export function QuotesPanel({ client }: { client: Client }) {
                   <Button size="sm" variant="secondary" loading={busy === `pdf-${q.id}`} onClick={() => pdf(q)}>
                     <FileDown className="h-4 w-4" /> PDF
                   </Button>
-                  <Button size="sm" variant="secondary" loading={busy === `send-${q.id}`} onClick={() => send(q)} title="Envoyer le PDF à remplir et signer">
-                    <Send className="h-4 w-4" /> Envoyer
-                  </Button>
+                  {!q.client_signed_at && q.sign_token && (
+                    <Button size="sm" onClick={() => setSignLink(q)} title="Envoyer le lien de signature en ligne">
+                      <Send className="h-4 w-4" /> Faire signer
+                    </Button>
+                  )}
                   {q.status === "accepte" && !q.invoice_id && (
                     <Button size="sm" variant="ghost" loading={busy === `inv-${q.id}`} onClick={() => toInvoice(q)} title="Créer la facture dans Finances">
                       <Receipt className="h-4 w-4" /> Facturer
@@ -219,6 +218,27 @@ export function QuotesPanel({ client }: { client: Client }) {
             setEditing(null);
             reload();
             if (andPdf) await pdf(q);
+          }}
+        />
+      )}
+      {signLink && (
+        <SignLinkModal
+          quote={signLink}
+          client={client}
+          onClose={() => setSignLink(null)}
+          onShared={() => {
+            if (signLink.status === "brouillon") setStatus(signLink, "envoye");
+          }}
+        />
+      )}
+      {coachSign && (
+        <CoachSignModal
+          quote={coachSign}
+          onClose={() => setCoachSign(null)}
+          onSigned={() => {
+            setCoachSign(null);
+            toast.success("Ta signature est ajoutée au devis.");
+            reload();
           }}
         />
       )}
@@ -548,6 +568,134 @@ function QuoteModal({
 
         {err && <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{err}</p>}
       </div>
+    </Modal>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Lien de signature en ligne                                           */
+/* ------------------------------------------------------------------ */
+
+function SignLinkModal({ quote, client, onClose, onShared }: { quote: Quote; client: Client; onClose: () => void; onShared: () => void }) {
+  const toast = useToast();
+  const [qr, setQr] = useState<string | null>(null);
+  const url = quoteSignLink(typeof window !== "undefined" ? window.location.origin : "", quote.sign_token!);
+  const text = `Bonjour ${client.first_name}, voici ton devis ${quote.number} (${eur(Number(quote.total))}). Tu peux le consulter et le signer en ligne ici : ${url}`;
+
+  useEffect(() => {
+    QRCode.toDataURL(url, { width: 600, margin: 1, color: { dark: "#0b0e14", light: "#ffffff" } }).then(setQr).catch(() => setQr(null));
+  }, [url]);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Lien copié.");
+      onShared();
+    } catch {
+      toast.info(url);
+    }
+  }
+  async function share() {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `Devis ${quote.number}`, text, url });
+        onShared();
+      } else copy();
+    } catch {
+      /* partage annulé */
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Faire signer le devis ${quote.number}`}>
+      <p className="text-sm text-ink-300">
+        Envoie ce lien à {client.first_name} : il voit le devis, accepte les conditions et signe au doigt sur son téléphone. Le devis passe tout seul en « Accepté ».
+      </p>
+      <div className="mt-4 flex items-center gap-2 rounded-xl border border-ink-700 bg-ink-900 p-2.5">
+        <p className="min-w-0 flex-1 truncate text-sm text-ink-200">{url}</p>
+        <Button size="sm" variant="secondary" onClick={copy}>
+          <Copy className="h-4 w-4" /> Copier
+        </Button>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <Button onClick={share}>
+          <Share2 className="h-4 w-4" /> Partager (SMS, mail…)
+        </Button>
+        {quote.client_phone ? (
+          <a
+            href={`https://wa.me/${quote.client_phone.replace(/\D/g, "").replace(/^0/, "33")}?text=${encodeURIComponent(text)}`}
+            target="_blank"
+            rel="noreferrer"
+            onClick={onShared}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 text-sm font-medium text-emerald-300 hover:bg-emerald-500/10"
+          >
+            <MessageCircle className="h-4 w-4" /> WhatsApp
+          </a>
+        ) : (
+          <a
+            href={`https://wa.me/?text=${encodeURIComponent(text)}`}
+            target="_blank"
+            rel="noreferrer"
+            onClick={onShared}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 text-sm font-medium text-emerald-300 hover:bg-emerald-500/10"
+          >
+            <MessageCircle className="h-4 w-4" /> WhatsApp
+          </a>
+        )}
+      </div>
+      <div className="mt-5 flex flex-col items-center gap-2 rounded-xl border border-ink-700 bg-ink-900/60 p-4">
+        <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-ink-400">
+          <QrCode className="h-3.5 w-3.5" /> En face à face : fais-lui scanner
+        </p>
+        <div className="h-44 w-44 overflow-hidden rounded-xl bg-white p-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {qr ? <img src={qr} alt="QR code du lien de signature" className="h-full w-full" /> : <div className="h-full w-full animate-pulse bg-ink-200" />}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Signature du coach                                                   */
+/* ------------------------------------------------------------------ */
+
+function CoachSignModal({ quote, onClose, onSigned }: { quote: Quote; onClose: () => void; onSigned: () => void }) {
+  const pad = useRef<SignaturePadHandle>(null);
+  const [has, setHas] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    const png = pad.current?.toDataURL();
+    if (!png) return setErr("Signe dans le cadre.");
+    setBusy(true);
+    const { error } = await getSupabase()
+      .from("quotes")
+      .update({ coach_signature: png, coach_signed_at: new Date().toISOString() })
+      .eq("id", quote.id);
+    setBusy(false);
+    if (error) return setErr(errorMessage(error));
+    onSigned();
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Signer le devis ${quote.number}`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button loading={busy} disabled={!has} onClick={save}>
+            <PenLine className="h-4 w-4" /> Valider ma signature
+          </Button>
+        </>
+      }
+    >
+      <p className="mb-3 text-sm text-ink-300">Ta signature sera ajoutée au PDF avec la date du jour et la mention « Bon pour accord ».</p>
+      <SignaturePad ref={pad} onChange={(empty) => setHas(!empty)} />
+      {err && <p className="mt-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{err}</p>}
     </Modal>
   );
 }
