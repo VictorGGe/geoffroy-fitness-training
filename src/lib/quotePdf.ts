@@ -94,7 +94,7 @@ function partyCard(doc: jsPDF, x: number, y: number, w: number, h: number, title
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   doc.text(t(title), x + 6, y + 9);
-  let yy = y + 16;
+  let yy = y + 15;
   for (const r of rows) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.3);
@@ -102,10 +102,8 @@ function partyCard(doc: jsPDF, x: number, y: number, w: number, h: number, title
     doc.text(t(r.label.toUpperCase()), x + 6, yy);
     yy += 3.8;
     if (r.empty) {
-      doc.setDrawColor(...GREY);
-      doc.setLineDashPattern([0.4, 0.8], 0);
-      doc.line(x + 6, yy + 0.8, x + w - 14, yy + 0.8);
-      doc.setLineDashPattern([], 0);
+      // Champ à remplir par le client
+      textField(doc, `client_${r.label.normalize("NFD").replace(/[^\w]/g, "").toLowerCase()}`, x + 6, yy - 3.1, w - 12, 5, { fontSize: 8 });
       yy += 5.6;
       continue;
     }
@@ -123,6 +121,61 @@ function partyCard(doc: jsPDF, x: number, y: number, w: number, h: number, title
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Champs à remplir par le client (PDF formulaire)                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Les champs sont dessinés ici puis ajoutés à la fin avec pdf-lib, qui crée des champs
+ * de formulaire complets (police, apparence) lisibles par Acrobat, Aperçu, iPhone et Android.
+ */
+type FieldSpec = { kind: "text" | "check"; name: string; page: number; x: number; y: number; w: number; h: number; fontSize?: number; multiline?: boolean };
+let FIELDS: FieldSpec[] = [];
+
+/** Zone de saisie : fond bleu clair + champ texte remplissable. */
+function textField(doc: jsPDF, name: string, x: number, y: number, w: number, h: number, opts: { fontSize?: number; multiline?: boolean } = {}) {
+  doc.setFillColor(246, 249, 254);
+  doc.setDrawColor(190, 205, 226);
+  doc.setLineWidth(0.25);
+  doc.rect(x, y, w, h, "FD");
+  FIELDS.push({ kind: "text", name, page: doc.getCurrentPageInfo().pageNumber, x, y, w, h, fontSize: opts.fontSize ?? 9, multiline: opts.multiline });
+}
+
+function checkBox(doc: jsPDF, name: string, x: number, y: number, size = 3.6) {
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(...GREY);
+  doc.setLineWidth(0.3);
+  doc.rect(x, y, size, size, "FD");
+  FIELDS.push({ kind: "check", name, page: doc.getCurrentPageInfo().pageNumber, x, y, w: size, h: size });
+}
+
+async function addFormFields(base: ArrayBuffer): Promise<Uint8Array> {
+  const { PDFDocument, PDFName, PDFString, StandardFonts, rgb } = await import("pdf-lib");
+  const pdf = await PDFDocument.load(base);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const form = pdf.getForm();
+  const k = 72 / 25.4;
+  for (const f of FIELDS) {
+    const page = pdf.getPage(f.page - 1);
+    const box = { x: f.x * k, y: (H - f.y - f.h) * k, width: f.w * k, height: f.h * k, borderWidth: 0.7 };
+    if (f.kind === "text") {
+      const tf = form.createTextField(f.name);
+      if (f.multiline) tf.enableMultiline();
+      tf.addToPage(page, { ...box, font, textColor: rgb(0.08, 0.09, 0.11), backgroundColor: rgb(0.965, 0.976, 0.996), borderColor: rgb(0.745, 0.804, 0.886) });
+      tf.setFontSize(f.fontSize ?? 9);
+    } else {
+      const cb = form.createCheckBox(f.name);
+      cb.addToPage(page, { ...box, textColor: rgb(0.1, 0.43, 0.9), backgroundColor: rgb(1, 1, 1), borderColor: rgb(0.47, 0.49, 0.54) });
+    }
+  }
+  form.updateFieldAppearances(font);
+  // Police par défaut du formulaire (exigée par certains lecteurs pour afficher le texte saisi)
+  const acro = form.acroForm.dict;
+  acro.set(PDFName.of("DR"), pdf.context.obj({ Font: { Helvetica: font.ref } }));
+  acro.set(PDFName.of("DA"), PDFString.of("/Helvetica 0 Tf 0 g"));
+  return pdf.save();
+}
+
 function dotted(doc: jsPDF, x1: number, x2: number, y: number) {
   doc.setDrawColor(...LINE);
   doc.setLineWidth(0.3);
@@ -131,7 +184,9 @@ function dotted(doc: jsPDF, x1: number, x2: number, y: number) {
   doc.setLineDashPattern([], 0);
 }
 
-export async function exportQuotePdf(quote: Quote, client: { first_name: string; last_name: string }) {
+/** Construit le PDF (avec ses champs à remplir) et renvoie son contenu. */
+export async function buildQuotePdf(quote: Quote, client: { first_name: string; last_name: string }): Promise<{ bytes: Uint8Array; fileName: string }> {
+  FIELDS = [];
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const clientName = `${client.first_name} ${client.last_name.toUpperCase()}`;
   const total = quote.items.reduce((s, i) => s + lineTotal(i), 0);
@@ -152,7 +207,7 @@ export async function exportQuotePdf(quote: Quote, client: { first_name: string;
   // Coach / Client
   const cardY = 46;
   const cardW = (W - 2 * M - 6) / 2;
-  const cardH = 52;
+  const cardH = 51;
   partyCard(doc, M, cardY, cardW, cardH, "Le Coach", [
     { label: "Nom", lines: [COACH.name] },
     { label: "Lieu des séances", lines: [COACH.placeLine1, COACH.placeLine2] },
@@ -242,7 +297,7 @@ export async function exportQuotePdf(quote: Quote, client: { first_name: string;
   doc.setFontSize(6.8);
   doc.setTextColor(...GREY);
   doc.text(t(COACH.vat), M, y + 7);
-  y += 19;
+  y += 17;
 
   // 2. Conditions
   room(30);
@@ -266,28 +321,44 @@ export async function exportQuotePdf(quote: Quote, client: { first_name: string;
   doc.text("La prestation est soumise au contrat de Personal Training et à ses conditions générales de vente (annexe, page 2).", M, y + 1);
   y += 7.5;
 
-  // Bon pour accord
-  room(27);
+  // Bon pour accord (champs remplissables par le client)
+  room(30);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(...TEXT);
   doc.text("Bon pour accord", M, y);
-  y += 6;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.4);
+  doc.setTextColor(...BLUE);
+  doc.text(t("Remplissez les zones bleues, écrivez « Bon pour accord » dans la mention, signez, puis renvoyez ce PDF."), M + 31, y);
+  y += 5;
   const sigW = (W - 2 * M - 16) / 2;
   const sigX2 = M + sigW + 16;
-  doc.setFont("helvetica", "normal");
   doc.setFontSize(6.3);
   doc.setTextColor(...GREY);
   doc.text("SIGNATURE DU CLIENT", M, y);
   doc.text("SIGNATURE DU COACH", sigX2, y);
-  const lineY = y + 14;
+  // Client : signature (dessinée avec l'outil de signature du lecteur, ou nom tapé), date, mention
+  textField(doc, "client_signature", M, y + 1.5, sigW, 11, { fontSize: 12 });
+  const fy = y + 14.5;
+  doc.setFontSize(6.3);
+  doc.setTextColor(...GREY);
+  doc.text("Le", M, fy + 3.4);
+  textField(doc, "client_date", M + 4, fy, 24, 5, { fontSize: 8 });
+  doc.text("Mention", M + 31, fy + 3.4);
+  textField(doc, "client_mention", M + 41, fy, sigW - 41, 5, { fontSize: 8 });
+  checkBox(doc, "client_accepte_cgv", M, fy + 7.2, 3.4);
+  doc.setFontSize(6.6);
+  doc.setTextColor(60, 64, 72);
+  doc.text(t("J'ai lu et j'accepte les conditions générales de vente (page 2)"), M + 5, fy + 9.8);
+  // Coach
+  const lineY = y + 12.5;
   doc.setDrawColor(...GREY);
   doc.setLineDashPattern([0.4, 0.8], 0);
-  doc.line(M, lineY, M + sigW, lineY);
   doc.line(sigX2, lineY, sigX2 + sigW, lineY);
   doc.setLineDashPattern([], 0);
   doc.setFontSize(6.2);
-  doc.text(t(`${clientName} · date et mention « Bon pour accord »`), M + sigW / 2, lineY + 3.6, { align: "center" });
+  doc.setTextColor(...GREY);
   doc.text(t(`${COACH.name} · date et mention « Bon pour accord »`), sigX2 + sigW / 2, lineY + 3.6, { align: "center" });
   footer(doc);
 
@@ -327,12 +398,17 @@ export async function exportQuotePdf(quote: Quote, client: { first_name: string;
     y += 2.6;
   });
 
-  y = Math.min(y + 2, H - FOOTER_H - 22);
+  y = Math.min(y + 2, H - FOOTER_H - 20);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.3);
   doc.setTextColor(...GREY);
   doc.text(t("SIGNATURE DU CLIENT · précédée de « Lu et approuvé »"), M, y);
   doc.text(t("SIGNATURE DU COACH · précédée de « Lu et approuvé »"), sigX2, y);
+  checkBox(doc, "cgv_lu_et_approuve", M, y + 2, 3.4);
+  doc.setFontSize(6.6);
+  doc.setTextColor(60, 64, 72);
+  doc.text("Lu et approuvé", M + 5, y + 4.6);
+  textField(doc, "cgv_signature", M + 26, y + 1.4, sigW - 26, 5, { fontSize: 8 });
   footer(doc);
 
   // Numéros de page « 1/2 » (total connu maintenant)
@@ -346,5 +422,19 @@ export async function exportQuotePdf(quote: Quote, client: { first_name: string;
   }
 
   const safe = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w-]+/g, "_");
-  doc.save(`Devis_${safe(client.first_name)}_${safe(client.last_name)}_${quote.number}.pdf`);
+  const bytes = await addFormFields(doc.output("arraybuffer"));
+  return { bytes, fileName: `Devis_${safe(client.first_name)}_${safe(client.last_name)}_${quote.number}.pdf` };
+}
+
+/** Télécharge le devis (PDF remplissable et signable par le client). */
+export async function exportQuotePdf(quote: Quote, client: { first_name: string; last_name: string }) {
+  const { bytes, fileName } = await buildQuotePdf(quote, client);
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }

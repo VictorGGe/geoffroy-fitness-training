@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Copy, FileDown, FileText, Pencil, Plus, Receipt, Trash2, X } from "lucide-react";
+import { Copy, FileDown, FileText, Pencil, Plus, Receipt, Send, Trash2, X } from "lucide-react";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorBlock, Field, Input, LoadingBlock, Modal, Select, Textarea } from "./ui";
 import { useToast } from "./toast";
 import { cn } from "@/lib/cn";
@@ -50,6 +50,33 @@ export function QuotesPanel({ client }: { client: Client }) {
     try {
       const { exportQuotePdf } = await import("@/lib/quotePdf");
       await exportQuotePdf(q, client);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Envoi du PDF (à remplir et signer) : partage du téléphone si possible, sinon téléchargement. */
+  async function send(q: Quote) {
+    setBusy(`send-${q.id}`);
+    try {
+      const { buildQuotePdf, exportQuotePdf } = await import("@/lib/quotePdf");
+      const { bytes, fileName } = await buildQuotePdf(q, client);
+      const file = new File([bytes as BlobPart], fileName, { type: "application/pdf" });
+      const text = `Bonjour ${client.first_name}, voici ton devis ${q.number}. Tu peux le remplir et le signer directement dans le PDF, puis me le renvoyer. Victor`;
+      if (typeof navigator !== "undefined" && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: `Devis ${q.number}`, text });
+        } catch (e) {
+          if ((e as DOMException)?.name === "AbortError") return;
+          throw e;
+        }
+      } else {
+        await exportQuotePdf(q, client);
+        toast.info("PDF téléchargé : joins-le à ton email ou message.");
+      }
+      if (q.status === "brouillon") await setStatus(q, "envoye");
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -123,7 +150,7 @@ export function QuotesPanel({ client }: { client: Client }) {
           <EmptyState
             icon={<FileText className="h-6 w-6" />}
             title="Aucun devis pour ce client"
-            text="Choisis une formule : les lignes, le total et les conditions se remplissent tout seuls. Tu obtiens le PDF prêt à signer."
+            text="Choisis une formule ou fais un devis libre. Le PDF obtenu se remplit et se signe directement par le client, sur son téléphone ou son ordinateur."
             action={<Button onClick={() => setEditing("new")}><Plus className="h-4 w-4" /> Créer un devis</Button>}
           />
         ) : (
@@ -154,6 +181,9 @@ export function QuotesPanel({ client }: { client: Client }) {
                   </Select>
                   <Button size="sm" variant="secondary" loading={busy === `pdf-${q.id}`} onClick={() => pdf(q)}>
                     <FileDown className="h-4 w-4" /> PDF
+                  </Button>
+                  <Button size="sm" variant="secondary" loading={busy === `send-${q.id}`} onClick={() => send(q)} title="Envoyer le PDF à remplir et signer">
+                    <Send className="h-4 w-4" /> Envoyer
                   </Button>
                   {q.status === "accepte" && !q.invoice_id && (
                     <Button size="sm" variant="ghost" loading={busy === `inv-${q.id}`} onClick={() => toInvoice(q)} title="Créer la facture dans Finances">
