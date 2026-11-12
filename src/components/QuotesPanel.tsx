@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Copy, FileDown, FileText, MessageCircle, PenLine, Pencil, Plus, QrCode, Receipt, Send, Share2, Trash2, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, Copy, FileDown, FileText, MessageCircle, PenLine, Pencil, Plus, Printer, QrCode, Receipt, Send, Share2, Trash2, X } from "lucide-react";
 import QRCode from "qrcode";
 import { SignaturePad, type SignaturePadHandle } from "./SignaturePad";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorBlock, Field, Input, LoadingBlock, Modal, Select, Textarea } from "./ui";
@@ -48,11 +48,16 @@ export function QuotesPanel({ client }: { client: Client }) {
   const [toDelete, setToDelete] = useState<Quote | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  async function pdf(q: Quote) {
+  async function pdf(q: Quote, format: "pdf" | "print" | "word" = "pdf") {
     setBusy(`pdf-${q.id}`);
     try {
-      const { exportQuotePdf } = await import("@/lib/quotePdf");
-      await exportQuotePdf(q, client);
+      if (format === "word") {
+        const { exportQuoteDocx } = await import("@/lib/quoteDocx");
+        await exportQuoteDocx(q, client);
+      } else {
+        const { exportQuotePdf } = await import("@/lib/quotePdf");
+        await exportQuotePdf(q, client, { print: format === "print" });
+      }
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -176,9 +181,7 @@ export function QuotesPanel({ client }: { client: Client }) {
                       <option key={k} value={k}>{v.label}</option>
                     ))}
                   </Select>
-                  <Button size="sm" variant="secondary" loading={busy === `pdf-${q.id}`} onClick={() => pdf(q)}>
-                    <FileDown className="h-4 w-4" /> PDF
-                  </Button>
+                  <DownloadMenu loading={busy === `pdf-${q.id}`} onPick={(f) => pdf(q, f)} />
                   {!q.client_signed_at && q.sign_token && (
                     <Button size="sm" onClick={() => setSignLink(q)} title="Envoyer le lien de signature en ligne">
                       <Send className="h-4 w-4" /> Faire signer
@@ -697,5 +700,54 @@ function CoachSignModal({ quote, onClose, onSigned }: { quote: Quote; onClose: (
       <SignaturePad ref={pad} onChange={(empty) => setHas(!empty)} />
       {err && <p className="mt-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{err}</p>}
     </Modal>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Menu de téléchargement : PDF à remplir, PDF à imprimer, Word          */
+/* ------------------------------------------------------------------ */
+
+function DownloadMenu({ loading, onPick }: { loading: boolean; onPick: (f: "pdf" | "print" | "word") => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  const items: { f: "pdf" | "print" | "word"; icon: React.ReactNode; title: string; sub: string }[] = [
+    { f: "pdf", icon: <FileDown className="h-4 w-4" />, title: "PDF", sub: "Zones à remplir dans un lecteur PDF" },
+    { f: "print", icon: <Printer className="h-4 w-4" />, title: "PDF à imprimer", sub: "Lignes vides à remplir au stylo" },
+    { f: "word", icon: <FileText className="h-4 w-4" />, title: "Word (.docx)", sub: "Modifiable dans Word, Google Docs, Pages" },
+  ];
+  return (
+    <div ref={ref} className="relative">
+      <Button size="sm" variant="secondary" loading={loading} onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
+        <FileDown className="h-4 w-4" /> Télécharger <ChevronDown className="h-3.5 w-3.5" />
+      </Button>
+      {open && (
+        <div role="menu" className="absolute right-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-xl border border-ink-600 bg-ink-850 shadow-xl">
+          {items.map((i) => (
+            <button
+              key={i.f}
+              role="menuitem"
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onPick(i.f);
+              }}
+              className="flex w-full items-start gap-3 px-3.5 py-2.5 text-left hover:bg-ink-750"
+            >
+              <span className="mt-0.5 text-royal-300">{i.icon}</span>
+              <span>
+                <span className="block text-sm font-medium text-white">{i.title}</span>
+                <span className="block text-xs text-ink-400">{i.sub}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

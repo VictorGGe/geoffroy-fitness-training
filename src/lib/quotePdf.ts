@@ -131,9 +131,27 @@ function partyCard(doc: jsPDF, x: number, y: number, w: number, h: number, title
  */
 type FieldSpec = { kind: "text" | "check"; name: string; page: number; x: number; y: number; w: number; h: number; fontSize?: number; multiline?: boolean };
 let FIELDS: FieldSpec[] = [];
+/** Version « à imprimer » : lignes et cases vides à remplir au stylo (pas de champs). */
+let PRINT = false;
 
 /** Zone de saisie : fond bleu clair + champ texte remplissable. */
 function textField(doc: jsPDF, name: string, x: number, y: number, w: number, h: number, opts: { fontSize?: number; multiline?: boolean } = {}) {
+  if (PRINT) {
+    // Grand cadre (signature) : cadre blanc ; petit champ : ligne pointillée à remplir au stylo
+    if (h > 7) {
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(...GREY);
+      doc.setLineWidth(0.3);
+      doc.rect(x, y, w, h, "FD");
+    } else {
+      doc.setDrawColor(...GREY);
+      doc.setLineWidth(0.3);
+      doc.setLineDashPattern([0.5, 0.8], 0);
+      doc.line(x, y + h - 0.6, x + w, y + h - 0.6);
+      doc.setLineDashPattern([], 0);
+    }
+    return;
+  }
   doc.setFillColor(246, 249, 254);
   doc.setDrawColor(190, 205, 226);
   doc.setLineWidth(0.25);
@@ -146,6 +164,7 @@ function checkBox(doc: jsPDF, name: string, x: number, y: number, size = 3.6) {
   doc.setDrawColor(...GREY);
   doc.setLineWidth(0.3);
   doc.rect(x, y, size, size, "FD");
+  if (PRINT) return;
   FIELDS.push({ kind: "check", name, page: doc.getCurrentPageInfo().pageNumber, x, y, w: size, h: size });
 }
 
@@ -241,8 +260,13 @@ function dotted(doc: jsPDF, x1: number, x2: number, y: number) {
 }
 
 /** Construit le PDF (avec ses champs à remplir) et renvoie son contenu. */
-export async function buildQuotePdf(quote: Quote, client: { first_name: string; last_name: string }): Promise<{ bytes: Uint8Array; fileName: string }> {
+export async function buildQuotePdf(
+  quote: Quote,
+  client: { first_name: string; last_name: string },
+  opts: { print?: boolean } = {},
+): Promise<{ bytes: Uint8Array; fileName: string }> {
   FIELDS = [];
+  PRINT = !!opts.print;
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const clientName = `${client.first_name} ${client.last_name.toUpperCase()}`;
   const total = quote.items.reduce((s, i) => s + lineTotal(i), 0);
@@ -387,7 +411,17 @@ export async function buildQuotePdf(quote: Quote, client: { first_name: string; 
   doc.setFontSize(6.4);
   doc.setTextColor(...BLUE);
   if (!quote.client_signed_at || !quote.coach_signed_at) {
-    doc.text(t(quote.client_signed_at ? "Signé en ligne par le client." : "Signature en ligne via le lien reçu, ou directement dans les zones bleues de ce PDF."), M + 31, y);
+    doc.text(
+      t(
+        quote.client_signed_at
+          ? "Signé en ligne par le client."
+          : PRINT
+            ? "À imprimer : complétez les lignes, écrivez « Bon pour accord » et signez au stylo."
+            : "Signature en ligne via le lien reçu, ou directement dans les zones bleues de ce PDF.",
+      ),
+      M + 31,
+      y,
+    );
   }
   y += 5;
   const sigW = (W - 2 * M - 16) / 2;
@@ -509,14 +543,16 @@ export async function buildQuotePdf(quote: Quote, client: { first_name: string; 
   }
 
   const safe = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w-]+/g, "_");
-  const bytes = await addFormFields(doc.output("arraybuffer"));
-  return { bytes, fileName: `Devis_${safe(client.first_name)}_${safe(client.last_name)}_${quote.number}.pdf` };
+  const bytes = PRINT ? new Uint8Array(doc.output("arraybuffer")) : await addFormFields(doc.output("arraybuffer"));
+  PRINT = false;
+  return {
+    bytes,
+    fileName: `Devis_${safe(client.first_name)}_${safe(client.last_name)}_${quote.number}${opts.print ? "_a_imprimer" : ""}.pdf`,
+  };
 }
 
-/** Télécharge le devis (PDF remplissable et signable par le client). */
-export async function exportQuotePdf(quote: Quote, client: { first_name: string; last_name: string }) {
-  const { bytes, fileName } = await buildQuotePdf(quote, client);
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
+export function downloadBytes(bytes: Uint8Array, fileName: string, type: string) {
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
   const a = document.createElement("a");
   a.href = url;
   a.download = fileName;
@@ -524,4 +560,10 @@ export async function exportQuotePdf(quote: Quote, client: { first_name: string;
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+/** Télécharge le devis (PDF remplissable et signable, ou version à imprimer). */
+export async function exportQuotePdf(quote: Quote, client: { first_name: string; last_name: string }, opts: { print?: boolean } = {}) {
+  const { bytes, fileName } = await buildQuotePdf(quote, client, opts);
+  downloadBytes(bytes, fileName, "application/pdf");
 }
