@@ -330,7 +330,7 @@ export async function buildQuotePdf(quote: Quote, client: { first_name: string; 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.4);
   doc.setTextColor(...BLUE);
-  doc.text(t("Remplissez les zones bleues, écrivez « Bon pour accord » dans la mention, signez, puis renvoyez ce PDF."), M + 31, y);
+  doc.text(t("Remplissez les zones bleues, écrivez « Bon pour accord » dans la mention et signez directement dans ce PDF."), M + 31, y);
   y += 5;
   const sigW = (W - 2 * M - 16) / 2;
   const sigX2 = M + sigW + 16;
@@ -351,15 +351,16 @@ export async function buildQuotePdf(quote: Quote, client: { first_name: string; 
   doc.setFontSize(6.6);
   doc.setTextColor(60, 64, 72);
   doc.text(t("J'ai lu et j'accepte les conditions générales de vente (page 2)"), M + 5, fy + 9.8);
-  // Coach
-  const lineY = y + 12.5;
-  doc.setDrawColor(...GREY);
-  doc.setLineDashPattern([0.4, 0.8], 0);
-  doc.line(sigX2, lineY, sigX2 + sigW, lineY);
-  doc.setLineDashPattern([], 0);
-  doc.setFontSize(6.2);
+  // Coach : mêmes champs (signature, date, mention)
+  textField(doc, "coach_signature", sigX2, y + 1.5, sigW, 11, { fontSize: 12 });
+  doc.setFontSize(6.3);
   doc.setTextColor(...GREY);
-  doc.text(t(`${COACH.name} · date et mention « Bon pour accord »`), sigX2 + sigW / 2, lineY + 3.6, { align: "center" });
+  doc.text("Le", sigX2, fy + 3.4);
+  textField(doc, "coach_date", sigX2 + 4, fy, 24, 5, { fontSize: 8 });
+  doc.text("Mention", sigX2 + 31, fy + 3.4);
+  textField(doc, "coach_mention", sigX2 + 41, fy, sigW - 41, 5, { fontSize: 8 });
+  doc.setFontSize(6.2);
+  doc.text(t(COACH.name), sigX2, fy + 9.8);
   footer(doc);
 
   /* ---------------- Page 2 : CGV ---------------- */
@@ -409,6 +410,11 @@ export async function buildQuotePdf(quote: Quote, client: { first_name: string; 
   doc.setTextColor(60, 64, 72);
   doc.text("Lu et approuvé", M + 5, y + 4.6);
   textField(doc, "cgv_signature", M + 26, y + 1.4, sigW - 26, 5, { fontSize: 8 });
+  checkBox(doc, "coach_cgv_lu_et_approuve", sigX2, y + 2, 3.4);
+  doc.setFontSize(6.6);
+  doc.setTextColor(60, 64, 72);
+  doc.text("Lu et approuvé", sigX2 + 5, y + 4.6);
+  textField(doc, "coach_cgv_signature", sigX2 + 26, y + 1.4, sigW - 26, 5, { fontSize: 8 });
   footer(doc);
 
   // Numéros de page « 1/2 » (total connu maintenant)
