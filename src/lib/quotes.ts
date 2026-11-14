@@ -15,6 +15,25 @@ export interface QuoteCondition {
   value: string;
 }
 
+/** Infos que le coach remplit lui-même dans l'appli (imprimées sur le devis). */
+export interface QuoteDetails {
+  /** « Fait à … » */
+  place?: string;
+  /** Début de l'accompagnement (AAAA-MM-JJ) */
+  start_date?: string;
+  payment_methods?: string[];
+  /** Acompte à la signature, en euros */
+  deposit?: number;
+  notes?: string;
+  /** Imprime la date et « Bon pour accord » dans la partie du coach */
+  coach_prefill?: boolean;
+  /** Date de signature imprimée pour le client et le coach (sinon ligne vide) */
+  sign_date?: string;
+}
+
+export const PAYMENT_METHODS = ["Espèces", "Virement bancaire", "Carte bancaire", "Chèque", "Paiement en ligne"];
+export const DEFAULT_PLACE = "Essey-lès-Nancy";
+
 export interface Quote {
   id: string;
   client_id: string;
@@ -27,6 +46,7 @@ export interface Quote {
   client_address: string | null;
   items: QuoteItem[];
   conditions: QuoteCondition[];
+  details?: QuoteDetails | null;
   total: number;
   status: "brouillon" | "envoye" | "accepte" | "refuse";
   invoice_id: string | null;

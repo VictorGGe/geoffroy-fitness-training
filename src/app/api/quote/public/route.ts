@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   const { data: q } = await admin
     .from("quotes")
     .select(
-      "id, client_id, number, issued_on, valid_until, intro, client_email, client_phone, client_address, items, conditions, total, status, client_signature, client_signed_name, client_signed_at, coach_signature, coach_signed_at, created_at",
+      "id, client_id, number, issued_on, valid_until, intro, client_email, client_phone, client_address, items, conditions, details, total, status, client_signature, client_signed_name, client_signed_at, coach_signature, coach_signed_at, created_at",
     )
     .eq("sign_token", token)
     .maybeSingle();

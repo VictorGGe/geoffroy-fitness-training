@@ -2,7 +2,7 @@
 
 /** PDF du devis (page 1 : devis, page 2 : conditions générales de vente). */
 import { jsPDF } from "jspdf";
-import { CGV, CGV_PREAMBLE, COACH, eur, fmtDateFr, lineTotal, type Quote } from "./quotes";
+import { CGV, CGV_PREAMBLE, COACH, DEFAULT_PLACE, eur, fmtDateFr, lineTotal, type Quote, type QuoteCondition } from "./quotes";
 
 type RGB = [number, number, number];
 const BLACK: RGB = [12, 12, 14];
@@ -103,7 +103,7 @@ function partyCard(doc: jsPDF, x: number, y: number, w: number, h: number, title
     yy += 3.8;
     if (r.empty) {
       // Champ à remplir par le client
-      textField(doc, `client_${r.label.normalize("NFD").replace(/[^\w]/g, "").toLowerCase()}`, x + 6, yy - 3.1, w - 12, 5, { fontSize: 8 });
+      blank(doc, x + 6, yy - 3.1, w - 12, 5);
       yy += 5.6;
       continue;
     }
@@ -122,77 +122,28 @@ function partyCard(doc: jsPDF, x: number, y: number, w: number, h: number, title
 }
 
 /* ------------------------------------------------------------------ */
-/* Champs à remplir par le client (PDF formulaire)                      */
+/* Zones à remplir au stylo (devis prêt à imprimer)                    */
 /* ------------------------------------------------------------------ */
 
-/**
- * Les champs sont dessinés ici puis ajoutés à la fin avec pdf-lib, qui crée des champs
- * de formulaire complets (police, apparence) lisibles par Acrobat, Aperçu, iPhone et Android.
- */
-type FieldSpec = { kind: "text" | "check"; name: string; page: number; x: number; y: number; w: number; h: number; fontSize?: number; multiline?: boolean };
-let FIELDS: FieldSpec[] = [];
-/** Version « à imprimer » : lignes et cases vides à remplir au stylo (pas de champs). */
-let PRINT = false;
-
-/** Zone de saisie : fond bleu clair + champ texte remplissable. */
-function textField(doc: jsPDF, name: string, x: number, y: number, w: number, h: number, opts: { fontSize?: number; multiline?: boolean } = {}) {
-  if (PRINT) {
-    // Grand cadre (signature) : cadre blanc ; petit champ : ligne pointillée à remplir au stylo
-    if (h > 7) {
-      doc.setFillColor(255, 255, 255);
-      doc.setDrawColor(...GREY);
-      doc.setLineWidth(0.3);
-      doc.rect(x, y, w, h, "FD");
-    } else {
-      doc.setDrawColor(...GREY);
-      doc.setLineWidth(0.3);
-      doc.setLineDashPattern([0.5, 0.8], 0);
-      doc.line(x, y + h - 0.6, x + w, y + h - 0.6);
-      doc.setLineDashPattern([], 0);
-    }
-    return;
+/** Grand cadre (signature) ou ligne pointillée (date, mention, coordonnées). */
+function blank(doc: jsPDF, x: number, y: number, w: number, h: number) {
+  doc.setDrawColor(...GREY);
+  doc.setLineWidth(0.3);
+  if (h > 7) {
+    doc.setFillColor(255, 255, 255);
+    doc.rect(x, y, w, h, "FD");
+  } else {
+    doc.setLineDashPattern([0.5, 0.8], 0);
+    doc.line(x, y + h - 0.6, x + w, y + h - 0.6);
+    doc.setLineDashPattern([], 0);
   }
-  doc.setFillColor(246, 249, 254);
-  doc.setDrawColor(190, 205, 226);
-  doc.setLineWidth(0.25);
-  doc.rect(x, y, w, h, "FD");
-  FIELDS.push({ kind: "text", name, page: doc.getCurrentPageInfo().pageNumber, x, y, w, h, fontSize: opts.fontSize ?? 9, multiline: opts.multiline });
 }
 
-function checkBox(doc: jsPDF, name: string, x: number, y: number, size = 3.6) {
+function emptyBox(doc: jsPDF, x: number, y: number, size = 3.4) {
   doc.setFillColor(255, 255, 255);
   doc.setDrawColor(...GREY);
   doc.setLineWidth(0.3);
   doc.rect(x, y, size, size, "FD");
-  if (PRINT) return;
-  FIELDS.push({ kind: "check", name, page: doc.getCurrentPageInfo().pageNumber, x, y, w: size, h: size });
-}
-
-async function addFormFields(base: ArrayBuffer): Promise<Uint8Array> {
-  const { PDFDocument, PDFName, PDFString, StandardFonts, rgb } = await import("pdf-lib");
-  const pdf = await PDFDocument.load(base);
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  const form = pdf.getForm();
-  const k = 72 / 25.4;
-  for (const f of FIELDS) {
-    const page = pdf.getPage(f.page - 1);
-    const box = { x: f.x * k, y: (H - f.y - f.h) * k, width: f.w * k, height: f.h * k, borderWidth: 0.7 };
-    if (f.kind === "text") {
-      const tf = form.createTextField(f.name);
-      if (f.multiline) tf.enableMultiline();
-      tf.addToPage(page, { ...box, font, textColor: rgb(0.08, 0.09, 0.11), backgroundColor: rgb(0.965, 0.976, 0.996), borderColor: rgb(0.745, 0.804, 0.886) });
-      tf.setFontSize(f.fontSize ?? 9);
-    } else {
-      const cb = form.createCheckBox(f.name);
-      cb.addToPage(page, { ...box, textColor: rgb(0.1, 0.43, 0.9), backgroundColor: rgb(1, 1, 1), borderColor: rgb(0.47, 0.49, 0.54) });
-    }
-  }
-  form.updateFieldAppearances(font);
-  // Police par défaut du formulaire (exigée par certains lecteurs pour afficher le texte saisi)
-  const acro = form.acroForm.dict;
-  acro.set(PDFName.of("DR"), pdf.context.obj({ Font: { Helvetica: font.ref } }));
-  acro.set(PDFName.of("DA"), PDFString.of("/Helvetica 0 Tf 0 g"));
-  return pdf.save();
 }
 
 /** Date courte « 12/11/2026 » (heure de Paris). */
@@ -241,6 +192,17 @@ function filledLine(doc: jsPDF, x: number, y: number, date: string) {
   doc.setFont("helvetica", "normal");
 }
 
+/** Texte imprimé à la place d'une ligne à remplir. */
+function printed(doc: jsPDF, x: number, y: number, text: string) {
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...TEXT);
+  doc.text(t(text), x, y);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.3);
+  doc.setTextColor(...GREY);
+}
+
 /** Case cochée (dessinée). */
 function tick(doc: jsPDF, x: number, y: number, size = 3.4) {
   doc.setFillColor(26, 111, 230);
@@ -263,15 +225,20 @@ function dotted(doc: jsPDF, x1: number, x2: number, y: number) {
 export async function buildQuotePdf(
   quote: Quote,
   client: { first_name: string; last_name: string },
-  opts: { print?: boolean } = {},
 ): Promise<{ bytes: Uint8Array; fileName: string }> {
-  FIELDS = [];
-  PRINT = !!opts.print;
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const clientName = `${client.first_name} ${client.last_name.toUpperCase()}`;
   const total = quote.items.reduce((s, i) => s + lineTotal(i), 0);
   const marks: PageMark[] = [];
-  const LIMIT = H - FOOTER_H - 4;
+  const LIMIT = H - FOOTER_H - 2.5;
+  const dd = quote.details ?? {};
+  const condCount =
+    quote.conditions.filter((c) => c.label.trim() || c.value.trim()).length +
+    (dd.start_date ? 1 : 0) +
+    (dd.payment_methods?.length ? 1 : 0) +
+    (dd.deposit ? 1 : 0) +
+    (dd.notes?.trim() ? 1 : 0);
+  const compact = condCount > 6 || quote.items.length > 3;
   /** Passe sur une page de suite si la place manque (le devis reste lisible même très long). */
   const room = (needed: number) => {
     if (y + needed <= LIMIT) return;
@@ -302,7 +269,7 @@ export async function buildQuotePdf(
 
   // 1. Détail
   let y = 0;
-  y = numberedTitle(doc, cardY + cardH + 11, 1, "Détail de la prestation");
+  y = numberedTitle(doc, cardY + cardH + (compact ? 9 : 11), 1, "Détail de la prestation");
   if (quote.intro?.trim()) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.4);
@@ -327,9 +294,9 @@ export async function buildQuotePdf(
   for (const item of quote.items) {
     const labelLines = doc.splitTextToSize(t(item.label), 100) as string[];
     const subLines = item.sub ? (doc.splitTextToSize(t(item.sub), 100) as string[]) : [];
-    const rowH = 5 + labelLines.length * 4.2 + subLines.length * 3.6 + 2.5;
+    const rowH = (compact ? 4 : 5) + labelLines.length * 4.2 + subLines.length * 3.6 + (compact ? 1.6 : 2.5);
     room(rowH);
-    let ry = y + 6.5;
+    let ry = y + (compact ? 5.8 : 6.5);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.6);
     doc.setTextColor(...TEXT);
@@ -377,31 +344,45 @@ export async function buildQuotePdf(
   doc.setFontSize(6.8);
   doc.setTextColor(...GREY);
   doc.text(t(COACH.vat), M, y + 7);
-  y += 17;
+  y += compact ? 13 : 17;
 
   // 2. Conditions
   room(30);
   y = numberedTitle(doc, y, 2, "Conditions");
   doc.setFontSize(7.8);
-  for (const c of quote.conditions.filter((c) => c.label.trim() || c.value.trim())) {
+  const d = quote.details ?? {};
+  const extra: QuoteCondition[] = [
+    ...(d.start_date ? [{ label: "Début de l'accompagnement", value: fmtDateFr(d.start_date) }] : []),
+    ...(d.payment_methods?.length ? [{ label: "Moyens de paiement", value: d.payment_methods.join(", ") }] : []),
+    ...(d.deposit && d.deposit > 0 ? [{ label: "Acompte", value: `${eur(d.deposit)} à verser à la signature, déduit du total` }] : []),
+  ];
+  const conds = quote.conditions.filter((c) => c.label.trim() || c.value.trim());
+  const payIdx = conds.findIndex((c) => c.label === "Paiement");
+  const allConds = payIdx >= 0 ? [...conds.slice(0, payIdx + 1), ...extra, ...conds.slice(payIdx + 1)] : [...conds, ...extra];
+  if (d.notes?.trim()) allConds.push({ label: "Notes", value: d.notes.trim() });
+  // Beaucoup de lignes : présentation compacte pour garder le devis sur 2 pages
+
+  const lh = compact ? 3.3 : 3.7;
+  doc.setFontSize(compact ? 7.3 : 7.8);
+  for (const c of allConds) {
     const vLines = doc.splitTextToSize(t(c.value), W - 2 * M - 44) as string[];
-    room(vLines.length * 3.8 + 4);
+    room(vLines.length * lh + 4);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...TEXT);
     doc.text(t(c.label), M, y);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(60, 64, 72);
     doc.text(vLines, M + 44, y);
-    y += Math.max(1, vLines.length) * 3.7 + 1.1;
-    dotted(doc, M, W - M, y - 2.2);
-    y += 1.9;
+    y += Math.max(1, vLines.length) * lh + (compact ? 0.8 : 1.1);
+    dotted(doc, M, W - M, y - (compact ? 2 : 2.2));
+    y += compact ? 1.3 : 1.9;
   }
   doc.setFontSize(6.8);
   doc.setTextColor(...GREY);
   doc.text("La prestation est soumise au contrat de Personal Training et à ses conditions générales de vente (annexe, page 2).", M, y + 1);
-  y += 7.5;
+  y += compact ? 6.2 : 7.5;
 
-  // Bon pour accord (champs remplissables par le client)
+  // Bon pour accord : à remplir au stylo (ou signé en ligne)
   room(30);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
@@ -410,19 +391,9 @@ export async function buildQuotePdf(
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.4);
   doc.setTextColor(...BLUE);
-  if (!quote.client_signed_at || !quote.coach_signed_at) {
-    doc.text(
-      t(
-        quote.client_signed_at
-          ? "Signé en ligne par le client."
-          : PRINT
-            ? "À imprimer : complétez les lignes, écrivez « Bon pour accord » et signez au stylo."
-            : "Signature en ligne via le lien reçu, ou directement dans les zones bleues de ce PDF.",
-      ),
-      M + 31,
-      y,
-    );
-  }
+  doc.setTextColor(60, 64, 72);
+  doc.setFontSize(7.4);
+  doc.text(t(`Fait à ${d.place?.trim() || DEFAULT_PLACE}, en deux exemplaires.`), M + 31, y);
   y += 5;
   const sigW = (W - 2 * M - 16) / 2;
   const sigX2 = M + sigW + 16;
@@ -433,20 +404,22 @@ export async function buildQuotePdf(
   const fy = y + 14.5;
   const clientDate = quote.client_signed_at ? fmtShort(quote.client_signed_at) : null;
   const coachDate = quote.coach_signed_at ? fmtShort(quote.coach_signed_at) : null;
+  const signDate = d.sign_date ? fmtShort(`${d.sign_date}T12:00:00`) : null;
   // Client : signée en ligne → image de la signature ; sinon champs à remplir
   if (quote.client_signature && clientDate) {
     signatureBox(doc, quote.client_signature, M, y + 1.5, sigW, 11);
     filledLine(doc, M, fy, clientDate);
     tick(doc, M, fy + 7.2);
   } else {
-    textField(doc, "client_signature", M, y + 1.5, sigW, 11, { fontSize: 12 });
+    blank(doc, M, y + 1.5, sigW, 11);
     doc.setFontSize(6.3);
     doc.setTextColor(...GREY);
     doc.text("Le", M, fy + 3.4);
-    textField(doc, "client_date", M + 4, fy, 24, 5, { fontSize: 8 });
+    if (signDate) printed(doc, M + 4, fy + 3.4, signDate);
+    else blank(doc, M + 4, fy, 24, 5);
     doc.text("Mention", M + 31, fy + 3.4);
-    textField(doc, "client_mention", M + 41, fy, sigW - 41, 5, { fontSize: 8 });
-    checkBox(doc, "client_accepte_cgv", M, fy + 7.2, 3.4);
+    blank(doc, M + 41, fy, sigW - 41, 5);
+    emptyBox(doc, M, fy + 7.2, 3.4);
   }
   doc.setFontSize(6.6);
   doc.setTextColor(60, 64, 72);
@@ -460,14 +433,19 @@ export async function buildQuotePdf(
   if (quote.coach_signature && coachDate) {
     signatureBox(doc, quote.coach_signature, sigX2, y + 1.5, sigW, 11);
     filledLine(doc, sigX2, fy, coachDate);
+  } else if (d.coach_prefill) {
+    // Date et mention imprimées, signature à la main
+    blank(doc, sigX2, y + 1.5, sigW, 11);
+    filledLine(doc, sigX2, fy, signDate ?? fmtShort(`${quote.issued_on}T12:00:00`));
   } else {
-    textField(doc, "coach_signature", sigX2, y + 1.5, sigW, 11, { fontSize: 12 });
+    blank(doc, sigX2, y + 1.5, sigW, 11);
     doc.setFontSize(6.3);
     doc.setTextColor(...GREY);
     doc.text("Le", sigX2, fy + 3.4);
-    textField(doc, "coach_date", sigX2 + 4, fy, 24, 5, { fontSize: 8 });
+    if (signDate) printed(doc, sigX2 + 4, fy + 3.4, signDate);
+    else blank(doc, sigX2 + 4, fy, 24, 5);
     doc.text("Mention", sigX2 + 31, fy + 3.4);
-    textField(doc, "coach_mention", sigX2 + 41, fy, sigW - 41, 5, { fontSize: 8 });
+    blank(doc, sigX2 + 41, fy, sigW - 41, 5);
   }
   doc.setFontSize(6.2);
   doc.setTextColor(...GREY);
@@ -518,7 +496,7 @@ export async function buildQuotePdf(
   doc.text(t("SIGNATURE DU COACH · précédée de « Lu et approuvé »"), sigX2, y);
   const cgvSide = (x0: number, signedBy: string | null, date: string | null, prefix: string) => {
     if (signedBy && date) tick(doc, x0, y + 2);
-    else checkBox(doc, `${prefix}cgv_lu_et_approuve`, x0, y + 2, 3.4);
+    else emptyBox(doc, x0, y + 2, 3.4);
     doc.setFontSize(6.6);
     doc.setTextColor(60, 64, 72);
     doc.text("Lu et approuvé", x0 + 5, y + 4.6);
@@ -526,7 +504,7 @@ export async function buildQuotePdf(
       doc.setFont("helvetica", "bold");
       doc.text(t(`${signedBy} · signé le ${date}`), x0 + 26, y + 4.6);
       doc.setFont("helvetica", "normal");
-    } else textField(doc, `${prefix}cgv_signature`, x0 + 26, y + 1.4, sigW - 26, 5, { fontSize: 8 });
+    } else blank(doc, x0 + 26, y + 1.4, sigW - 26, 5);
   };
   cgvSide(M, quote.client_signed_name ?? (quote.client_signed_at ? clientName : null), quote.client_signed_at ? fmtShort(quote.client_signed_at) : null, "");
   cgvSide(sigX2, quote.coach_signed_at ? COACH.name : null, quote.coach_signed_at ? fmtShort(quote.coach_signed_at) : null, "coach_");
@@ -543,12 +521,7 @@ export async function buildQuotePdf(
   }
 
   const safe = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\w-]+/g, "_");
-  const bytes = PRINT ? new Uint8Array(doc.output("arraybuffer")) : await addFormFields(doc.output("arraybuffer"));
-  PRINT = false;
-  return {
-    bytes,
-    fileName: `Devis_${safe(client.first_name)}_${safe(client.last_name)}_${quote.number}${opts.print ? "_a_imprimer" : ""}.pdf`,
-  };
+  return { bytes: new Uint8Array(doc.output("arraybuffer")), fileName: `Devis_${safe(client.first_name)}_${safe(client.last_name)}_${quote.number}.pdf` };
 }
 
 export function downloadBytes(bytes: Uint8Array, fileName: string, type: string) {
@@ -563,7 +536,7 @@ export function downloadBytes(bytes: Uint8Array, fileName: string, type: string)
 }
 
 /** Télécharge le devis (PDF remplissable et signable, ou version à imprimer). */
-export async function exportQuotePdf(quote: Quote, client: { first_name: string; last_name: string }, opts: { print?: boolean } = {}) {
-  const { bytes, fileName } = await buildQuotePdf(quote, client, opts);
+export async function exportQuotePdf(quote: Quote, client: { first_name: string; last_name: string }) {
+  const { bytes, fileName } = await buildQuotePdf(quote, client);
   downloadBytes(bytes, fileName, "application/pdf");
 }

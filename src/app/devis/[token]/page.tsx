@@ -110,7 +110,13 @@ function QuoteSummary({ quote: q }: { quote: Quote }) {
       </div>
       {q.conditions.length > 0 && (
         <dl className="divide-y divide-ink-700/40 border-t border-ink-700/60 px-4 sm:px-5">
-          {q.conditions.map((c, idx) => (
+          {[
+            ...q.conditions,
+            ...(q.details?.start_date ? [{ label: "Début de l'accompagnement", value: fmtDateFr(q.details.start_date) }] : []),
+            ...(q.details?.payment_methods?.length ? [{ label: "Moyens de paiement", value: q.details.payment_methods.join(", ") }] : []),
+            ...(q.details?.deposit ? [{ label: "Acompte", value: `${eur(q.details.deposit)} à verser à la signature` }] : []),
+            ...(q.details?.notes ? [{ label: "Notes", value: q.details.notes }] : []),
+          ].map((c, idx) => (
             <div key={idx} className="grid gap-1 py-2.5 text-sm sm:grid-cols-[170px_1fr]">
               <dt className="font-medium text-ink-100">{c.label}</dt>
               <dd className="text-ink-300">{c.value}</dd>

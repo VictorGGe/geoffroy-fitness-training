@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, ChevronDown, Copy, FileDown, FileText, MessageCircle, PenLine, Pencil, Plus, Printer, QrCode, Receipt, Send, Share2, Trash2, X } from "lucide-react";
+import { CheckCircle2, Copy, FileDown, FileText, MessageCircle, PenLine, Pencil, Plus, Printer, QrCode, Receipt, Send, Share2, Trash2, X } from "lucide-react";
 import QRCode from "qrcode";
 import { SignaturePad, type SignaturePadHandle } from "./SignaturePad";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorBlock, Field, Input, LoadingBlock, Modal, Select, Textarea } from "./ui";
@@ -20,6 +20,9 @@ import {
   QUOTE_PRESETS,
   QUOTE_STATUS,
   QUOTE_VALIDITY_DAYS,
+  DEFAULT_PLACE,
+  PAYMENT_METHODS,
+  type QuoteDetails,
   quoteSignLink,
   quoteTotal,
   type Quote,
@@ -48,16 +51,11 @@ export function QuotesPanel({ client }: { client: Client }) {
   const [toDelete, setToDelete] = useState<Quote | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  async function pdf(q: Quote, format: "pdf" | "print" | "word" = "pdf") {
+  async function pdf(q: Quote) {
     setBusy(`pdf-${q.id}`);
     try {
-      if (format === "word") {
-        const { exportQuoteDocx } = await import("@/lib/quoteDocx");
-        await exportQuoteDocx(q, client);
-      } else {
-        const { exportQuotePdf } = await import("@/lib/quotePdf");
-        await exportQuotePdf(q, client, { print: format === "print" });
-      }
+      const { exportQuotePdf } = await import("@/lib/quotePdf");
+      await exportQuotePdf(q, client);
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -181,7 +179,9 @@ export function QuotesPanel({ client }: { client: Client }) {
                       <option key={k} value={k}>{v.label}</option>
                     ))}
                   </Select>
-                  <DownloadMenu loading={busy === `pdf-${q.id}`} onPick={(f) => pdf(q, f)} />
+                  <Button size="sm" variant="secondary" loading={busy === `pdf-${q.id}`} onClick={() => pdf(q)} title="PDF prêt à imprimer">
+                    <Printer className="h-4 w-4" /> PDF
+                  </Button>
                   {!q.client_signed_at && q.sign_token && (
                     <Button size="sm" onClick={() => setSignLink(q)} title="Envoyer le lien de signature en ligne">
                       <Send className="h-4 w-4" /> Faire signer
@@ -313,6 +313,20 @@ function QuoteModal({
   const [email, setEmail] = useState(initial?.client_email ?? lastQuote?.client_email ?? accountEmail ?? "");
   const [phone, setPhone] = useState(initial?.client_phone ?? lastQuote?.client_phone ?? "");
   const [address, setAddress] = useState(initial?.client_address ?? lastQuote?.client_address ?? "");
+  // Infos remplies par le coach (imprimées sur le devis)
+  const [details, setDetails] = useState<QuoteDetails>(() => {
+    const base = initial?.details ?? lastQuote?.details ?? {};
+    return {
+      place: base.place ?? DEFAULT_PLACE,
+      payment_methods: base.payment_methods ?? [],
+      coach_prefill: base.coach_prefill ?? false,
+      start_date: editingExisting ? initial?.details?.start_date : undefined,
+      deposit: editingExisting ? initial?.details?.deposit : undefined,
+      notes: editingExisting ? initial?.details?.notes : undefined,
+      sign_date: editingExisting ? initial?.details?.sign_date : undefined,
+    };
+  });
+  const setD = (patch: Partial<QuoteDetails>) => setDetails((d) => ({ ...d, ...patch }));
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState<"save" | "pdf" | null>(null);
 
@@ -380,6 +394,15 @@ function QuoteModal({
       client_address: address.trim() || null,
       items: clean.map((i) => ({ label: i.label.trim(), sub: i.sub?.trim() || undefined, qty: i.qty, unit_price: i.included ? 0 : i.unit_price, included: i.included || undefined })),
       conditions: conditions.filter((c) => c.label.trim() || c.value.trim()),
+      details: {
+        place: details.place?.trim() || DEFAULT_PLACE,
+        start_date: details.start_date || undefined,
+        payment_methods: details.payment_methods?.length ? details.payment_methods : undefined,
+        deposit: details.deposit && details.deposit > 0 ? Math.round(details.deposit * 100) / 100 : undefined,
+        notes: details.notes?.trim() || undefined,
+        coach_prefill: details.coach_prefill || undefined,
+        sign_date: details.sign_date || undefined,
+      },
       total: quoteTotal(clean),
     };
     const sb = getSupabase();
@@ -569,6 +592,72 @@ function QuoteModal({
           <p className="mt-2 text-xs text-ink-500">Les conditions générales de vente sont ajoutées automatiquement en page 2 du PDF.</p>
         </div>
 
+        <fieldset className="rounded-xl border border-ink-700 p-4">
+          <legend className="px-1.5 text-xs font-semibold uppercase tracking-wider text-ink-400">À remplir par toi (imprimé sur le devis)</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Fait à">
+              <Input value={details.place ?? ""} onChange={(e) => setD({ place: e.target.value })} maxLength={80} />
+            </Field>
+            <Field label="Début de l'accompagnement">
+              <Input type="date" value={details.start_date ?? ""} onChange={(e) => setD({ start_date: e.target.value })} />
+            </Field>
+            <Field label="Acompte à la signature (€)">
+              <Input
+                inputMode="decimal"
+                value={details.deposit ? String(details.deposit).replace(".", ",") : ""}
+                onChange={(e) => setD({ deposit: num(e.target.value) || undefined })}
+                placeholder="Aucun"
+              />
+            </Field>
+            <Field label="Date de signature" hint="Imprimée pour le client et pour toi. Vide = ligne à remplir au stylo.">
+              <Input type="date" value={details.sign_date ?? ""} onChange={(e) => setD({ sign_date: e.target.value })} />
+            </Field>
+            <div className="sm:col-span-2">
+              <p className="label">Moyens de paiement acceptés</p>
+              <div className="flex flex-wrap gap-2">
+                {PAYMENT_METHODS.map((m) => {
+                  const on = (details.payment_methods ?? []).includes(m);
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() =>
+                        setD({ payment_methods: on ? (details.payment_methods ?? []).filter((x) => x !== m) : [...(details.payment_methods ?? []), m] })
+                      }
+                      className={cn(
+                        "rounded-full border px-3 py-1.5 text-sm transition",
+                        on ? "border-royal-500 bg-royal-600/20 text-white" : "border-ink-600 text-ink-300 hover:border-ink-500",
+                      )}
+                    >
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <Field label="Notes particulières" className="sm:col-span-2">
+              <Textarea
+                value={details.notes ?? ""}
+                onChange={(e) => setD({ notes: e.target.value })}
+                rows={2}
+                maxLength={800}
+                placeholder="Ex. séances le mardi et le jeudi à 18h, premier bilan offert…"
+              />
+            </Field>
+            <label className="flex items-start gap-2.5 text-sm text-ink-200 sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={!!details.coach_prefill}
+                onChange={(e) => setD({ coach_prefill: e.target.checked })}
+                className="mt-0.5 h-4 w-4 accent-royal-500"
+              />
+              <span>
+                Pré-remplir ma partie de la signature (date + « Bon pour accord ») : il ne me restera qu&apos;à signer au stylo.
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
         {err && <p className="rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{err}</p>}
       </div>
     </Modal>
@@ -700,54 +789,5 @@ function CoachSignModal({ quote, onClose, onSigned }: { quote: Quote; onClose: (
       <SignaturePad ref={pad} onChange={(empty) => setHas(!empty)} />
       {err && <p className="mt-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{err}</p>}
     </Modal>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Menu de téléchargement : PDF à remplir, PDF à imprimer, Word          */
-/* ------------------------------------------------------------------ */
-
-function DownloadMenu({ loading, onPick }: { loading: boolean; onPick: (f: "pdf" | "print" | "word") => void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
-  const items: { f: "pdf" | "print" | "word"; icon: React.ReactNode; title: string; sub: string }[] = [
-    { f: "pdf", icon: <FileDown className="h-4 w-4" />, title: "PDF", sub: "Zones à remplir dans un lecteur PDF" },
-    { f: "print", icon: <Printer className="h-4 w-4" />, title: "PDF à imprimer", sub: "Lignes vides à remplir au stylo" },
-    { f: "word", icon: <FileText className="h-4 w-4" />, title: "Word (.docx)", sub: "Modifiable dans Word, Google Docs, Pages" },
-  ];
-  return (
-    <div ref={ref} className="relative">
-      <Button size="sm" variant="secondary" loading={loading} onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
-        <FileDown className="h-4 w-4" /> Télécharger <ChevronDown className="h-3.5 w-3.5" />
-      </Button>
-      {open && (
-        <div role="menu" className="absolute right-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-xl border border-ink-600 bg-ink-850 shadow-xl">
-          {items.map((i) => (
-            <button
-              key={i.f}
-              role="menuitem"
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onPick(i.f);
-              }}
-              className="flex w-full items-start gap-3 px-3.5 py-2.5 text-left hover:bg-ink-750"
-            >
-              <span className="mt-0.5 text-royal-300">{i.icon}</span>
-              <span>
-                <span className="block text-sm font-medium text-white">{i.title}</span>
-                <span className="block text-xs text-ink-400">{i.sub}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
